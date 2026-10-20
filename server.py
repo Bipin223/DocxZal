@@ -523,8 +523,9 @@ class Handler(SimpleHTTPRequestHandler):
             text, err = call_provider(m, messages, max_tokens, key)
             if text is not None:
                 LAST_GOOD["gemini"] = m
+                # "switched" means a model failed first — not that the preference started
                 return jsend(self, 200, {"text": text, "provider": "gemini", "model": m,
-                                         "requested": asked, "switched": m != asked,
+                                         "requested": asked, "switched": len(tried) > 1,
                                          "tried": tried})
             if not retry_elsewhere(err):
                 break

@@ -1116,6 +1116,187 @@ makeDropdown("ddCols", {
 applyPageSetup();
 try { localStorage.removeItem("bd_key_gemini"); } catch {}
 
+/* ---------- transport: local proxy when present, direct Gemini when hosted static ----------
+   GitHub Pages serves files only, so POST /api/* is a 405 there. Gemini's REST API allows
+   browser calls (CORS + x-goog-api-key), so on a static host the page talks to Google
+   itself with the key typed into this field. Nothing is stored on either path. */
+const GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta";
+const PREFERRED_MODELS = ["gemini-3.5-flash"];
+const NON_TEXT_MODELS = ["image", "embedding", "embed", "tts", "audio", "live", "computer-use"];
+let transportMode = null; // "proxy" | "direct"
+async function transport() {
+  if (transportMode) return transportMode;
+  try {
+    const r = await fetch("/api/status", { headers: { Accept: "application/json" } });
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const j = ct.includes("json") ? await r.json().catch(() => null) : null;
+    transportMode = (j && typeof j.gemini === "boolean") ? "proxy" : "direct";
+  } catch { transportMode = "direct"; } // file:// or no backend at all
+  return transportMode;
+}
+function isPreferredModel(m) {
+  const s = String(m || "").toLowerCase().replace("models/", "").trim();
+  return PREFERRED_MODELS.some(p => s === p || s.startsWith(p + "-"));
+}
+function modelRank(id) { // preference first, then newest stable general model
+  const s = String(id || "").toLowerCase();
+  const ver = /(\d+(?:\.\d+)?)/.exec(s);
+  const version = ver ? parseFloat(ver[1]) : 0;
+  const unstable = /preview|exp|experimental|thinking|vision/.test(s) ? 1 : 0;
+  const lite = s.includes("lite") ? 1 : 0;
+  const family = s.includes("flash") ? 0 : (s.includes("pro") ? 1 : 2);
+  return [isPreferredModel(s) ? 0 : 1, unstable, lite, -version, family, s.length, s];
+}
+function textModels(ids) {
+  const usable = (ids || []).filter(i => i && !NON_TEXT_MODELS.some(s => String(i).toLowerCase().includes(s)));
+  return [...new Set(usable)].sort((a, b) => {
+    const ra = modelRank(a), rb = modelRank(b);
+    for (let k = 0; k < ra.length; k++) {
+      if (ra[k] < rb[k]) return -1;
+      if (ra[k] > rb[k]) return 1;
+    }
+    return 0;
+  });
+}
+const MODEL_CACHE = { fp: "", ids: [], at: 0 };
+async function directModels(key, signal, fresh) {
+  const fp = key.slice(-8);
+  if (!fresh && MODEL_CACHE.fp === fp && Date.now() - MODEL_CACHE.at < 300000) return MODEL_CACHE.ids;
+  const r = await fetch(GEMINI_ROOT + "/models?pageSize=200",
+    { headers: { "x-goog-api-key": key }, signal });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const e = new Error(((j.error || {}).message) || ("Gemini error " + r.status));
+    e.code = "UPSTREAM_" + r.status;
+    throw e;
+  }
+  const ids = (j.models || [])
+    .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map(m => String(m.name || "").replace("models/", ""));
+  MODEL_CACHE.fp = fp; MODEL_CACHE.ids = ids; MODEL_CACHE.at = Date.now();
+  return ids;
+}
+function geminiBody(messages, maxTokens) {
+  const system = [], contents = [];
+  (messages || []).forEach(m => {
+    const role = m.role || "user";
+    if (role === "system") { system.push(m.content || ""); return; }
+    const parts = [];
+    if (m.content) parts.push({ text: m.content });
+    if (m.image) parts.push({ inline_data: { mime_type: "image/jpeg", data: String(m.image).split(",").pop() } });
+    contents.push({ role: role === "assistant" ? "model" : "user", parts: parts.length ? parts : [{ text: "" }] });
+  });
+  const body = { contents: contents.length ? contents : [{ role: "user", parts: [{ text: "hi" }] }],
+    generationConfig: { maxOutputTokens: maxTokens || 4096, temperature: 0.7 } };
+  if (system.length) body.systemInstruction = { parts: [{ text: system.join("\n") }] };
+  return body;
+}
+async function directGenerate(key, model, messages, maxTokens, signal, timeout) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout || 110000);
+  if (signal) signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+  try {
+    const r = await fetch(`${GEMINI_ROOT}/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(geminiBody(messages, maxTokens)),
+      signal: ctrl.signal
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const e = new Error(((j.error || {}).message) || ("Gemini error " + r.status));
+      e.code = "UPSTREAM_" + r.status;
+      throw e;
+    }
+    return j;
+  } finally { clearTimeout(timer); }
+}
+function geminiTextOf(resp) { // thought parts are not the answer
+  const cand = (resp.candidates || [])[0] || {};
+  const parts = (cand.content || {}).parts || [];
+  const text = parts.filter(p => p && !p.thought && typeof p.text === "string").map(p => p.text).join("");
+  if (text) return text;
+  const thinking = parts.some(p => p && p.thought);
+  const e = new Error(`Gemini returned no text (${cand.finishReason || "no answer"})`);
+  e.code = "BAD_RESPONSE";
+  e.thinking = thinking;
+  throw e;
+}
+async function directPing(key, model, signal) {
+  const ask = [{ role: "user", content: "Reply with exactly: ok" }];
+  try {
+    return geminiTextOf(await directGenerate(key, model, ask, 256, signal, 12000));
+  } catch (e) {
+    if (!e.thinking) throw e;
+    // a thinking model spends a small budget on its thoughts: give it room once
+    return geminiTextOf(await directGenerate(key, model, ask, 2048, signal, 12000));
+  }
+}
+function shortReason(e) {
+  const code = (e && e.code) || "", msg = String((e && e.message) || "").toLowerCase();
+  if (/no longer available|retired|not found|not supported/.test(msg) || code === "UPSTREAM_404") return "retired";
+  if (code === "UPSTREAM_429" || /quota|rate limit|resource_exhausted|exhausted/.test(msg)) return "limit reached";
+  if ((e && e.name === "AbortError") || code === "TIMEOUT") return "timed out";
+  if (code === "BAD_RESPONSE") return "no usable answer";
+  if (/^UPSTREAM_5\d\d$/.test(code)) return "overloaded";
+  if (/^UPSTREAM_40[013]$/.test(code)) return "key rejected";
+  return "didn't answer";
+}
+async function directTest(key, onEvent, signal) {
+  const t0 = performance.now();
+  const ids = textModels(await directModels(key, signal, true)); // ListModels also proves the key
+  onEvent({ event: "catalogue", count: ids.length });
+  const order = ids.length ? ids : PREFERRED_MODELS;
+  const tried = [];
+  for (const m of order.slice(0, 6)) {
+    onEvent({ event: "try", model: m, first: tried.length === 0 });
+    try {
+      await directPing(key, m, signal);
+      return { ok: true, provider: "gemini", model: m, models: ids, verified: true,
+        tried, ms: Math.round(performance.now() - t0) };
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+      const reason = shortReason(e);
+      tried.push({ model: m, reason });
+      if (reason === "key rejected") throw e; // another model won't fix a bad key
+      onEvent({ event: "busy", model: m, reason });
+    }
+  }
+  return { ok: true, provider: "gemini", model: order[0], models: ids, verified: false,
+    note: tried.length ? tried[tried.length - 1].reason : "no answer",
+    tried, ms: Math.round(performance.now() - t0) };
+}
+let lastDirectGood = "";
+async function directAskAI({ messages, maxTokens, signal, key, asked, timeout }) {
+  const t0 = performance.now();
+  const ids = textModels(await directModels(key, signal, false));
+  const order = [];
+  const push = m => {
+    m = String(m || "").replace("models/", "").trim();
+    if (m && !order.includes(m) && (!ids.length || ids.includes(m))) order.push(m);
+  };
+  ids.filter(isPreferredModel).forEach(push);
+  push(asked); push(lastDirectGood);
+  ids.forEach(push);
+  if (!order.length) order.push("gemini-3.5-flash", "gemini-flash-latest");
+  const tried = [];
+  let lastErr = null;
+  for (const m of order.slice(0, 3)) {
+    try {
+      const text = geminiTextOf(await directGenerate(key, m, messages, maxTokens, signal, timeout));
+      lastDirectGood = m;
+      return { text, provider: "gemini", model: m, requested: asked || "",
+        // "switched" means a model failed first — not that the preference started here
+        switched: tried.length > 0, tried, ms: Math.round(performance.now() - t0) };
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+      lastErr = e; tried.push(m);
+      if (shortReason(e) === "key rejected") throw e;
+    }
+  }
+  throw lastErr || Object.assign(new Error("No model answered"), { code: "NO_MODEL" });
+}
+
 /* ---------- one frontend entry: askAI({provider, model, messages, signal, key}) ---------- */
 async function askAI({ provider = "gemini", model, messages, signal, timeout = 55000, maxTokens, vision, key } = {}) {
   const ctrl = new AbortController();
@@ -1127,6 +1308,10 @@ async function askAI({ provider = "gemini", model, messages, signal, timeout = 5
   const typed = ($("#key-gemini") && $("#key-gemini").value.trim()) || "";
   const useKey = key || typed;
   try {
+    if (await transport() === "direct") {
+      if (!useKey) throw Object.assign(new Error("Paste your Gemini API key first"), { code: "NO_KEY" });
+      return await directAskAI({ messages, maxTokens, signal: ctrl.signal, key: useKey, asked: model, timeout });
+    }
     const r = await fetch("/api/ai", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider, model, messages, maxTokens, vision: !!vision,
@@ -1153,6 +1338,7 @@ $("#setToggle").addEventListener("click", () => {
   setExpanded(reg, btn, reg.hidden);
 });
 async function refreshStatus() {
+  if (await transport() === "direct") { $("#ks-gemini").textContent = "No key"; return; }
   try {
     const j = await (await fetch("/api/status")).json();
     $("#ks-gemini").textContent = j.gemini ? "Key saved" : "No key";
@@ -1168,7 +1354,9 @@ function keyCard(p) {
   };
   $("#clear-" + p).onclick = async () => { // explicit click only
     $("#key-" + p).value = "";
-    try { await fetch("/api/keys?provider=" + p, { method: "DELETE" }); } catch {}
+    if (await transport() === "proxy") {
+      try { await fetch("/api/keys?provider=" + p, { method: "DELETE" }); } catch {}
+    }
     refreshStatus(); st("Cleared.");
   };
   let cancelFn = null;
@@ -1181,6 +1369,7 @@ function keyCard(p) {
     const ctrl = new AbortController();
     cancelFn = () => ctrl.abort();
     const typed = $("#key-" + p).value.trim();
+    const mode = await transport();
     // Hard stop: never leave the card stuck if the network or a model stalls.
     const watchdog = setTimeout(() => ctrl.abort(), 45000);
     const hops = [];
@@ -1212,6 +1401,12 @@ function keyCard(p) {
       }
     };
     try {
+      if (mode === "direct") {
+        // static host (GitHub Pages): no proxy to call, so the page asks Google itself
+        if (!typed) throw failWithCode({ error: "Paste a key first — Test doesn't save it", code: "NO_KEY" });
+        land(await directTest(typed, onEvent, ctrl.signal));
+        return;
+      }
       // One call does everything: verify the key, route past busy / retired / silent
       // models until one answers, and list the catalogue. Nothing is saved; the key
       // is reused from this input for Generate while the page is open.

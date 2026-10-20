@@ -9,6 +9,9 @@ Author: **Bipin Rizal** — https://github.com/Bipin223
 ## Run
 `python server.py` → http://localhost:8000 (stdlib only, no install). The server proxies AI calls; keys typed in the page stay in the browser field and go only to your local proxy, are never written to disk, logs, or error messages.
 
+### Hosted on GitHub Pages (no server)
+Pages serves files only, so `POST /api/*` is a `405` there. The page detects that once (`/api/status` not answering JSON) and switches to talking to Gemini directly with `x-goog-api-key` — Google's REST API allows browser CORS, so Test and Generate work on the static site with the key you type in. Nothing is stored in either mode; the key lives in the field for the open page only.
+
 ## AI architecture
 - `askAI({provider, model, messages, signal})` is the single frontend entry → `POST /api/ai`
 - `POST /api/test` does the whole job in one call: it proves the key, finds a model that actually answers, and returns every text model the key can see. `stream: true` answers in newline-delimited progress events, so the card shows each hop live — "Checking the key with gemini-4-argon…", "gemini-4-argon is busy · routing to gemini-3.8-flash…" — and only reports an error when the key itself is rejected. A busy / retired / quota-limited / silent model is never surfaced as an error; the whole run is capped by one 30s budget
