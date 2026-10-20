@@ -834,7 +834,7 @@ $("#btnKeyAI").onclick = async () => {
   const st = $("#keyStatus");
   st.className = "status"; st.textContent = "Writing solutions…";
   try {
-    const j = await askAI({ provider: "gemini", model: aiModel, messages: [
+    const j = await askAI({ provider: "gemini", model: aiModel || undefined, messages: [
       { role: "system", content: "You are a teacher writing a concise answer key. Return clean Markdown only: 'Q1. …' lines with short final answers, math in $...$ LaTeX. No preamble, no code fences." },
       { role: "user", content: "Write the answer key for this paper:\n\n" + paper }
     ], maxTokens: 8192, timeout: 120000 });
@@ -966,15 +966,9 @@ function makeDropdown(rootId, opts) {
     setValue(v) { setValue(v); }
   };
 }
-const GEMINI_MODELS = [{ value: "gemini-3.8-flash", label: "gemini-3.8-flash" }, { value: "gemini-2.5-flash", label: "gemini-2.5-flash" }, { value: "gemini-2.0-flash", label: "gemini-2.0-flash" }];
-const PREF_MODELS = {
-  gemini: ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
-};
-let aiModel = "gemini-3.8-flash";
-const discovered = { gemini: null };   // short-lived in-memory catalogue
-const verified = JSON.parse(localStorage.getItem("bd_verified") || "{}");
-function saveVerified() { try { localStorage.setItem("bd_verified", JSON.stringify(verified)); } catch {} }
-const ddModel = makeDropdown("ddModel", { options: GEMINI_MODELS, value: aiModel, onChange: (v) => { aiModel = v; } });
+/* The model is chosen and swapped by the server from the key's live catalogue:
+   nothing to pick here, and nothing to keep stale in localStorage. */
+let aiModel = "";   // last model the server reported using; "" = let it decide
 
 /* ---------- document font: one picker drives preview + every export ---------- */
 const DOC_FONTS = {
@@ -1122,16 +1116,21 @@ makeDropdown("ddCols", {
 applyPageSetup();
 try { localStorage.removeItem("bd_key_gemini"); } catch {}
 
-/* ---------- one frontend entry: askAI({provider, model, messages, signal}) ---------- */
-async function askAI({ provider = "gemini", model, messages, signal, timeout = 55000, maxTokens, vision } = {}) {
+/* ---------- one frontend entry: askAI({provider, model, messages, signal, key}) ---------- */
+async function askAI({ provider = "gemini", model, messages, signal, timeout = 55000, maxTokens, vision, key } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeout);
   if (signal) signal.addEventListener("abort", () => ctrl.abort(), { once: true });
   const t0 = performance.now();
+  // A key typed into Settings works immediately without Save: it is sent with each
+  // request and used for that call only. The server never stores it.
+  const typed = ($("#key-gemini") && $("#key-gemini").value.trim()) || "";
+  const useKey = key || typed;
   try {
     const r = await fetch("/api/ai", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, model, messages, maxTokens, vision: !!vision }),
+      body: JSON.stringify({ provider, model, messages, maxTokens, vision: !!vision,
+        ...(useKey ? { key: useKey } : {}) }),
       signal: ctrl.signal
     });
     const j = await r.json().catch(() => ({}));
@@ -1170,77 +1169,96 @@ function keyCard(p) {
   $("#clear-" + p).onclick = async () => { // explicit click only
     $("#key-" + p).value = "";
     try { await fetch("/api/keys?provider=" + p, { method: "DELETE" }); } catch {}
-    discovered[p] = null; delete verified[p]; saveVerified();
     refreshStatus(); st("Cleared.");
-  };
-  $("#save-" + p).onclick = async () => {
-    const key = $("#key-" + p).value.trim();
-    if (!key) { st("Paste a key first.", "err"); return; }
-    st("Saving…");
-    try {
-      const r = await fetch("/api/keys", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: p, key }) });
-      const j = await r.json();
-      if (!r.ok || j.error) throw new Error(j.error || "Save failed");
-      $("#key-" + p).value = ""; // never keep the secret in the page
-      refreshStatus(); st("Saved on server (memory only).", "ok");
-    } catch (e) { st(e.message, "err"); }
-  };
-  $("#disc-" + p).onclick = async () => {
-    st("Discovering models…");
-    try {
-      const r = await fetch("/api/models", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: p }) });
-      const j = await r.json();
-      if (j.error) { const e = new Error(j.error); e.code = j.code; throw e; }
-      discovered[p] = j.models.map(m => m.id);
-      st(`Found ${discovered[p].length} model${discovered[p].length === 1 ? "" : "s"}${j.cached ? " (cached)" : ""}.`, "ok");
-      if (p === "gemini") {
-        ddModel.setOptions(discovered[p].map(id => ({ value: id, label: id })));
-        if (discovered[p].length) { aiModel = discovered[p][0]; ddModel.setValue(aiModel); }
-      }
-    } catch (e) { st(e.message, "err"); }
   };
   let cancelFn = null;
   const failWithCode = (j) => { const e = new Error(j.error); e.code = j.code; return e; };
   $("#test-" + p).onclick = async () => {
     const cancelBtn = $("#cancel-" + p);
     if (cancelFn) cancelFn(); // supersede any in-flight run so statuses can't interleave
-    st("Verifying…");
+    st("Checking the key…");
     cancelBtn.hidden = false;
     const ctrl = new AbortController();
     cancelFn = () => ctrl.abort();
-    const t0 = performance.now();
-    try {
-      if (!discovered[p]) {
-        const r = await fetch("/api/models", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: p }), signal: ctrl.signal });
-        const j = await r.json();
-        if (j.error) throw failWithCode(j);
-        discovered[p] = j.models.map(m => m.id);
+    const typed = $("#key-" + p).value.trim();
+    // Hard stop: never leave the card stuck if the network or a model stalls.
+    const watchdog = setTimeout(() => ctrl.abort(), 45000);
+    const hops = [];
+    const land = (j) => {
+      aiModel = j.model || "";
+      const secs = j.ms ? " · " + (j.ms / 1000).toFixed(1) + "s" : "";
+      const avail = (j.models || []).length ? ` · ${j.models.length} available` : "";
+      const skipped = hops.length
+        ? ` · routed past ${hops.length} busy model${hops.length === 1 ? "" : "s"}` : "";
+      if (j.verified === false) {
+        st(`Key works${avail} · all models busy right now — Generate keeps routing automatically`, "ok");
+      } else {
+        st(`Verified · ${j.model}${secs}${avail}${skipped} · auto-switches if one is busy`, "ok");
       }
-      // one candidate only: preferred known-good ∩ discovered, else first — never test them all
-      const cand = PREF_MODELS[p].find(m => discovered[p].includes(m)) || discovered[p][0];
-      if (!cand) throw new Error("No models available for this key.");
-      const j = await askAI({ provider: p, model: cand,
-        messages: [{ role: "user", content: "Reply with exactly: ok" }],
-        signal: ctrl.signal, timeout: 55000, maxTokens: 256 }); // thinking models need headroom + time
-      // the server may have replaced a retired id with the current model — trust what answered
-      const used = j.model || cand;
-      verified[p] = used; saveVerified();
-      const opts = (discovered[p] || []).slice();
-      if (!opts.includes(used)) opts.unshift(used);
-      ddModel.setOptions(opts.map(id => ({ value: id, label: id })));
-      aiModel = used; ddModel.setValue(used);
-      const swap = (j.switched && j.requested) ? ` · ${j.requested} retired → ${used}` : "";
-      st(`Verified · ${used}${swap} · ${((performance.now() - t0) / 1000).toFixed(1)}s`, "ok");
+      // raw upstream detail stays on hover, never in the card
+      const el = $("#st-" + p);
+      el.title = hops.map(h => `${h.model}: ${h.reason}`).join("\n");
+      $("#ks-gemini").textContent = typed ? "Key in use (not saved)" : "Key saved";
+    };
+    const onEvent = (ev) => {
+      if (ev.event === "try") {
+        const last = hops[hops.length - 1];
+        st(ev.first ? `Checking the key with ${ev.model}…`
+          : last ? `${last.model} is busy · routing to ${ev.model}…`
+          : `Routing to ${ev.model}…`);
+      } else if (ev.event === "busy") {
+        hops.push({ model: ev.model, reason: ev.reason || "busy" });
+        st(`${ev.model} is busy (${ev.reason || "no answer"}) — routing to another model…`);
+      }
+    };
+    try {
+      // One call does everything: verify the key, route past busy / retired / silent
+      // models until one answers, and list the catalogue. Nothing is saved; the key
+      // is reused from this input for Generate while the page is open.
+      const r = await fetch("/api/test", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: p, key: typed || undefined, stream: true }), signal: ctrl.signal });
+      if (!r.ok) {
+        const bad = await r.json().catch(() => ({}));
+        throw failWithCode(Object.assign({ error: "Server error " + r.status, code: "SERVER_" + r.status }, bad));
+      }
+      let final = null;
+      if (!r.body || !r.body.getReader) { // no streaming support: plain JSON answer
+        final = await r.json();
+      } else {
+        const reader = r.body.getReader(), dec = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            let ev = null;
+            try { ev = JSON.parse(line); } catch { continue; }
+            if (ev.event === "done") final = ev; else onEvent(ev);
+          }
+        }
+        const tail = buf.trim();
+        if (tail) { // a plain JSON body has no trailing newline
+          let ev = null;
+          try { ev = JSON.parse(tail); } catch {}
+          if (ev) final = ev;
+        }
+      }
+      if (!final) throw new Error("Test lost the connection — try again");
+      if (final.error) throw failWithCode(final);
+      land(final);
     } catch (e) {
       if (e.name === "AbortError") st("Cancelled.", "");
       else {
         const code = e.code ? ` [${e.code}]` : "";
         st("Failed: " + e.message + code, "err");
+        $("#st-" + p).title = "";
       }
-    } finally { cancelBtn.hidden = true; cancelFn = null; }
+    } finally { clearTimeout(watchdog); cancelBtn.hidden = true; cancelFn = null; }
   };
   $("#cancel-" + p).onclick = () => { if (cancelFn) cancelFn(); };
 }
@@ -1248,7 +1266,9 @@ keyCard("gemini"); refreshStatus();
 function servedLine(j) {
   const el = $("#servedBy");
   el.hidden = false;
-  const swap = (j.switched && j.requested) ? ` · ${j.requested} retired → ${j.model}` : "";
+  if (j.model) aiModel = j.model;
+  const swap = (j.switched && j.requested && j.requested !== j.model)
+    ? ` · auto-switched from ${j.requested}` : "";
   el.textContent = `Answered by ${j.provider} · ${j.model}${swap}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)}s` : ""}`;
 }
 function buildPrompt() {
@@ -1271,14 +1291,14 @@ $("#btnGenerate").onclick = async () => {
   const st = $("#aiStatus");
   $("#genLabel").textContent = "Generating…"; st.className = "status"; st.textContent = "Calling Gemini…";
   try {
-    const j = await askAI({ provider: "gemini", model: aiModel, messages: [
+    const j = await askAI({ provider: "gemini", model: aiModel || undefined, messages: [
       { role: "system", content: "You write clean Markdown exam papers with LaTeX math." },
       { role: "user", content: buildPrompt() }
     ], maxTokens: 8192, timeout: 120000 }); // thinking models need a big budget + time
     if (!j.text.trim()) throw new Error("Empty response — try again.");
     $("#rawInput").value = structurePaper(j.text); syncCount(); render(); tabs[0].click();
     servedLine(j);
-    st.className = "status ok"; st.textContent = "Done.";
+    st.className = "status ok"; st.textContent = `Done · ${j.model}.`;
   } catch (e) { st.className = "status err"; st.textContent = e.message + (e.code ? ` [${e.code}]` : ""); }
   finally { $("#genLabel").textContent = "Generate with AI"; }
 };
@@ -2149,7 +2169,7 @@ $("#btnAskImg").onclick = async () => {
   setExpanded(box, null, true);
   try {
     const j = await askAI({ provider: "gemini",
-      model: aiModel,
+      model: aiModel || undefined,
       messages: [
         { role: "system", content: "Extract text faithfully. Return math in $...$ / $$...$$ LaTeX." },
         { role: "user", content: q, image: attachedImage }
@@ -2227,7 +2247,7 @@ function sendChat() {
   send.disabled = true;
   const thinking = chatBubble("sys", "Thinking…");
   askAI({
-    provider: "gemini", model: aiModel,
+    provider: "gemini", model: aiModel || undefined,
     messages: [{ role: "system", content: chatSystemPrompt() }, ...chatHistory.slice(-8)],
     maxTokens: 8192, timeout: 120000
   }).then(j => {
