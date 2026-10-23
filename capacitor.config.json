@@ -1,0 +1,11 @@
+{
+  "appId": "com.bipinrizal.docxzal",
+  "appName": "Docxzal",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -84,7 +84,7 @@ function setTheme(n, ev) {
     tr.ready.then(() => {
       document.documentElement.animate(
         { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-        { duration: 900, easing: "cubic-bezier(.4,0,.2,1)", pseudoElement: "::view-transition-new(root)" });
+        { duration: 700, easing: "cubic-bezier(.4,0,.2,1)", pseudoElement: "::view-transition-new(root)" });
     }).catch(() => {});
   } catch { done(); apply(); }
 }
@@ -490,11 +490,13 @@ function normalizeAIText(raw) {
 
 /* ---------- Header ---------- */
 function syncHeader() {
+  const showHead = $("#cHeader").checked;
   $("#pSchool").textContent = $("#sSchool").value || "School Name";
   $("#pTitle").textContent = $("#sTitle").value || "Examination";
   $("#pMeta").textContent = `${$("#sSub").value}  •  ${$("#sMeta").value}`;
   $("#pInstr").textContent = $("#sInstr").value || "";
-  $("#paperHead").style.display = $("#cHeader").checked ? "" : "none";
+  $("#paperHead").style.display = showHead ? "" : "none";
+  $("#paper").classList.toggle("no-head", !showHead); // no stray 14px gap when the header is off
   $("#pMeta").style.display = $("#cMeta").checked ? "" : "none";
   $("#pInstr").style.display = $("#cInstrBox").checked ? "" : "none";
   const footL = ($("#fFoot").value || "").trim(), showPg = $("#cPageNum").checked;
@@ -503,13 +505,15 @@ function syncHeader() {
   $("#pFootR").style.marginLeft = (showPg && !footL) ? "auto" : "";
   $("#paperFoot").style.display = (!footL && !showPg) ? "none" : "";
   try {
-    localStorage.setItem("bd_cfg", JSON.stringify({ v: 2, m: $("#cMeta").checked, i: $("#cInstrBox").checked, p: showPg, f: $("#fFoot").value }));
+    localStorage.setItem("bd_cfg", JSON.stringify({ v: 2, h: showHead, m: $("#cMeta").checked, i: $("#cInstrBox").checked, p: showPg, f: $("#fFoot").value }));
   } catch {}
 }
 ["sSchool","sTitle","sSub","sMeta","sInstr","cHeader","cMeta","cInstrBox","fFoot","cPageNum"].forEach(id => $("#"+id).addEventListener("input", syncHeader));
 (function initHeadFoot() {
   try {
     const c = JSON.parse(localStorage.getItem("bd_cfg") || "{}");
+    // Header is off unless the user explicitly switched it on (new default).
+    if (c.h === true) document.getElementById("cHeader").checked = true;
     if (c.m === false) document.getElementById("cMeta").checked = false;
     if (c.i === false) document.getElementById("cInstrBox").checked = false;
     if (c.p === false) document.getElementById("cPageNum").checked = false;
@@ -854,8 +858,12 @@ function pageDims() {
 }
 function computeFit() {
   const scroller = document.querySelector(".paper-scroll");
-  const avail = scroller ? scroller.clientWidth - 4 : 794;
-  fitZoom = Math.min(1, avail / (pageDims().w + 2 * marginPx())); // whole sheet incl. margins
+  let avail = pageDims().w;
+  if (scroller) { // clientWidth includes the gutter, and .a4 padding is inside its width (border-box)
+    const cs = getComputedStyle(scroller);
+    avail = scroller.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 4;
+  }
+  fitZoom = Math.min(1, Math.max(0.1, avail / pageDims().w));
 }
 function applyZoom() {
   computeFit();
@@ -867,36 +875,368 @@ function applyZoom() {
   else paper.style.transform = `scale(${eff})`; // fallback
   updatePageChip();
 }
-window.addEventListener("resize", applyZoom);
+let resizeFrame = 0;
+window.addEventListener("resize", () => { // coalesce bursts into one layout pass
+  if (resizeFrame) return;
+  resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; applyZoom(); });
+}, { passive: true });
 $("#zoomIn").onclick = () => { zoom = Math.min(140, zoom + 10); applyZoom(); };
 $("#zoomOut").onclick = () => { zoom = Math.max(60, zoom - 10); applyZoom(); };
 applyZoom();
 
-/* ---------- PDF (direct download, no print dialog) ---------- */
+/* ---------- PDF: real A4 sheets, paginated with margins on every page ----------
+   html2pdf used to screenshot the continuous preview and slice it. That put the
+   preview's padding only at the top of page 1, let CSS page-break "pads" create
+   whole blank pages, and rounded 794×1123px into an extra trailing page. Here we
+   build one off-screen 210×297mm sheet per page first, so A4, margins and page
+   breaks are correct before a single canvas is captured. */
+function pdfPageDims() {
+  const landscape = pageOrient === "landscape";
+  const wmm = landscape ? 297 : 210;
+  const hmm = landscape ? 210 : 297;
+  return { wmm, hmm, w: wmm * 96 / 25.4, h: hmm * 96 / 25.4, m: marginPx() };
+}
+function pdfEmptyBlock(el) {
+  if (!el || el.nodeType !== 1) return true;
+  if (el.classList.contains("empty")) return true;
+  if (/^(HR|IMG|TABLE|SVG|CANVAS|VIDEO|IFRAME)$/.test(el.tagName)) return false;
+  if (el.querySelector("img,table,svg,canvas,hr,video,iframe")) return false;
+  return !(el.textContent || "").replace(/\u00a0/g, " ").trim();
+}
+function pdfCloneBlock(node) {
+  const el = node.cloneNode(true);
+  el.removeAttribute("id");
+  el.removeAttribute("contenteditable");
+  el.removeAttribute("spellcheck");
+  el.querySelectorAll("[contenteditable]").forEach(n => n.removeAttribute("contenteditable"));
+  return el;
+}
+function buildPdfPages() {
+  const paper = $("#paper"), dims = pdfPageDims(), twoCol = pageCols === 2;
+  syncHeader();                 // header/footer fields may have changed without a re-render
+  if (keyOn()) renderKey();     // flush the 400ms answer-key debounce before measuring
+  const host = document.createElement("div");
+  host.className = "pdf-doc";
+  host.setAttribute("aria-hidden", "true");
+  ["--doc-body", "--doc-head", "--hscale", "--bscale"].forEach(k => {
+    const v = paper.style.getPropertyValue(k);
+    if (v) host.style.setProperty(k, v);
+  });
+  document.body.appendChild(host);
+
+  const headSrc = $("#paperHead"), footSrc = $("#paperFoot");
+  const showHead = headSrc && getComputedStyle(headSrc).display !== "none";
+  const showFoot = footSrc && getComputedStyle(footSrc).display !== "none";
+  const showPageNo = $("#cPageNum").checked;
+  const footLeft = ($("#fFoot").value || "").trim();
+  const pages = [];
+  let current = null;
+
+  function makePage(withHead, key) {
+    const page = document.createElement("article");
+    const hasHead = withHead && showHead;
+    page.className = "a4 pdf-page" + (pageOrient === "landscape" ? " landscape" : "");
+    page.style.width = dims.w + "px";
+    page.style.height = dims.h + "px";
+    page.style.minHeight = dims.h + "px";
+    page.style.padding = dims.m + "px";
+    if (hasHead) page.appendChild(headSrc.cloneNode(true));
+    const flow = document.createElement("div");
+    flow.className = "paper-body pdf-flow" + (twoCol ? " two-col" : "") + (key ? " paper-key" : "");
+    flow.style.marginTop = hasHead ? "14px" : "0px"; // preview keeps a 14px gap under the header
+    page.appendChild(flow);
+    if (showFoot) {
+      // Word keeps the footer in the bottom margin (0.5" from the edge), not in
+      // the text area. Place it there so body height matches Word's defaults.
+      const foot = footSrc.cloneNode(true);
+      const fb = Math.min(48, Math.max(6, dims.m - 34));
+      foot.style.position = "absolute";
+      foot.style.left = dims.m + "px";
+      foot.style.right = dims.m + "px";
+      foot.style.bottom = fb + "px";
+      foot.style.marginTop = "0";
+      page.appendChild(foot);
+    }
+    host.appendChild(page);
+    current = { page, flow, key: !!key };
+    pages.push(current);
+    return current;
+  }
+
+  function contentHeight(rec) {
+    const f = rec.flow, last = f.lastElementChild;
+    if (!last) return 0;
+    const cs = getComputedStyle(last);
+    return last.getBoundingClientRect().bottom - f.getBoundingClientRect().top + (parseFloat(cs.marginBottom) || 0);
+  }
+  function fits(rec) {
+    const f = rec.flow;
+    if (twoCol && f.scrollWidth > f.clientWidth + 1) return false;
+    if (f.scrollHeight > f.clientHeight + 1) return false;
+    return contentHeight(rec) <= f.clientHeight + 1;
+  }
+  function appendBlock(rec, block) {
+    rec.flow.appendChild(block);
+    if (fits(rec)) return true;
+    rec.flow.removeChild(block);
+    return false;
+  }
+  function nextPage() { return makePage(false, current.key); }
+  function trailingHeading(rec) {
+    const last = rec.flow.lastElementChild;
+    return last && /^H[1-6]$/.test(last.tagName) ? last : null;
+  }
+  function freshFlowHeight() {
+    if (twoCol) return current.flow.clientHeight;
+    const prev = current, tmp = makePage(false, current.key), h = tmp.flow.clientHeight;
+    pages.pop(); tmp.page.remove(); current = prev;
+    return h;
+  }
+  function blockHeight(block) {
+    const probe = document.createElement("div");
+    probe.className = "paper-body pdf-flow";
+    probe.style.cssText = "position:absolute;left:0;top:0;height:auto;min-height:0;max-height:none;overflow:visible;margin:0;padding:0;";
+    probe.style.width = current.flow.clientWidth + "px";
+    host.appendChild(probe);
+    probe.appendChild(block);
+    const cs = getComputedStyle(block);
+    const h = block.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+    probe.remove();
+    return h;
+  }
+
+  /* A table taller than one page is split by rows; the header repeats. */
+  function splitTable(table) {
+    const headNodes = [];
+    let bodyRows = [], footNode = null, tbodyClass = "";
+    [...table.children].forEach(child => {
+      const tag = child.tagName;
+      if (tag === "THEAD" || tag === "CAPTION" || tag === "COLGROUP") headNodes.push(child.cloneNode(true));
+      else if (tag === "TFOOT") footNode = child.cloneNode(true);
+      else if (tag === "TBODY") {
+        if (!tbodyClass) tbodyClass = child.className;
+        bodyRows.push(...child.rows);
+      } else if (tag === "TR") bodyRows.push(child);
+    });
+    if (!bodyRows.length) bodyRows = [...table.rows];
+    const skeleton = () => {
+      const t = table.cloneNode(false);
+      headNodes.forEach(n => t.appendChild(n.cloneNode(true)));
+      const tb = document.createElement("tbody");
+      if (tbodyClass) tb.className = tbodyClass;
+      t.appendChild(tb);
+      return { table: t, tbody: tb };
+    };
+    let part = skeleton();
+    current.flow.appendChild(part.table);
+    bodyRows.forEach((row, i) => {
+      const r = row.cloneNode(true);
+      part.tbody.appendChild(r);
+      if (fits(current)) return;
+      part.tbody.removeChild(r);
+      if (!part.tbody.children.length) { // a single row is taller than the sheet
+        if (current.flow.children.length > 1) { // there is other content above the table
+          part.table.remove();
+          nextPage();
+          part = skeleton();
+          current.flow.appendChild(part.table);
+        }
+        part.tbody.appendChild(r);
+        if (i < bodyRows.length - 1) {
+          nextPage();
+          part = skeleton();
+          current.flow.appendChild(part.table);
+        }
+        return;
+      }
+      nextPage();
+      part = skeleton();
+      current.flow.appendChild(part.table);
+      part.tbody.appendChild(r);
+    });
+    if (footNode && footNode.children.length && current.flow.lastElementChild) {
+      current.flow.lastElementChild.appendChild(footNode.cloneNode(true));
+    }
+  }
+
+  /* A code block taller than one page is split by lines. */
+  function splitPre(pre) {
+    const code = pre.firstElementChild && pre.firstElementChild.tagName === "CODE" ? pre.firstElementChild : null;
+    const source = code || pre;
+    if (source.children.length) { current.flow.appendChild(pre); return; } // syntax-highlighted markup: keep it whole
+    const lines = (source.textContent || "").split("\n");
+    const make = () => {
+      const p = pre.cloneNode(false);
+      p.textContent = "";
+      let textRoot = p;
+      if (code) {
+        const c = code.cloneNode(false);
+        c.textContent = "";
+        p.appendChild(c);
+        textRoot = c;
+      }
+      current.flow.appendChild(p);
+      return textRoot;
+    };
+    let cur = make();
+    lines.forEach(line => {
+      const add = (cur.textContent ? "\n" : "") + line;
+      cur.textContent += add;
+      if (fits(current)) return;
+      cur.textContent = cur.textContent.slice(0, -add.length);
+      if (!cur.textContent) {
+        if (current.flow.children.length > 1) { // the empty pre is not enough to fill the sheet
+          const preEl = cur.closest("pre");
+          if (preEl) preEl.remove();
+          nextPage();
+          cur = make();
+        }
+        cur.textContent = line;
+        return;
+      }
+      nextPage();
+      cur = make();
+      cur.textContent = line;
+    });
+  }
+
+  function addBlock(node) {
+    if (pdfEmptyBlock(node)) return;
+    const block = pdfCloneBlock(node);
+    if (appendBlock(current, block)) return;
+
+    // A table or code block that is taller than any sheet must be split where
+    // it is. Moving it first would leave page 1 with nothing but the header.
+    if ((block.tagName === "TABLE" || block.tagName === "PRE") && !twoCol) {
+      const tooTall = blockHeight(block) > freshFlowHeight() + 1;
+      const firstPageWouldEmpty = current === pages[0] && current.flow.children.length <= 1;
+      if (tooTall || firstPageWouldEmpty) {
+        if (block.tagName === "TABLE") splitTable(block);
+        else splitPre(block);
+        return;
+      }
+    }
+
+    const heading = trailingHeading(current);
+    if (heading) current.flow.removeChild(heading);
+    if (current.flow.children.length || heading) {
+      nextPage();
+      if (heading) current.flow.appendChild(heading);
+    }
+    if (appendBlock(current, block)) return;
+    if (block.tagName === "TABLE") splitTable(block);
+    else if (block.tagName === "PRE") splitPre(block);
+    else current.flow.appendChild(block); // keep content rather than silently drop it
+  }
+
+  const bodyNodes = [...$("#paperBody").children];
+  const keyNodes = [...$("#paperKey").children].filter(n => !pdfEmptyBlock(n));
+  if (!bodyNodes.some(n => !pdfEmptyBlock(n))) { host.remove(); return null; }
+
+  makePage(true, false);
+  bodyNodes.forEach(addBlock);
+
+  if (keyOn() && keyNodes.length) {
+    if (current.flow.children.length) nextPage();
+    current.key = true;
+    current.flow.classList.add("paper-key");
+    keyNodes.forEach(addBlock);
+  }
+
+  // never leave an empty trailing sheet (the old exporter's blank last page)
+  while (pages.length > 1 && !pages[pages.length - 1].flow.children.length) {
+    const dead = pages.pop();
+    dead.page.remove();
+  }
+
+  /* A block that only just missed the previous sheet used to leave a page with
+     one lonely paragraph. Move trailing blocks forward so the last page reads
+     like a page, not a stray margin (never across the answer-key break). */
+  if (!twoCol && pages.length > 1) {
+    const last = pages[pages.length - 1], prev = pages[pages.length - 2];
+    if (!last.key && !prev.key && last.flow.children.length) {
+      const target = last.flow.clientHeight * 0.34;
+      while (contentHeight(last) < target && prev.flow.children.length > 1) {
+        const block = prev.flow.lastElementChild;
+        last.flow.prepend(block);
+        if (fits(last)) continue;
+        last.flow.removeChild(block);
+        prev.flow.appendChild(block);
+        break;
+      }
+    }
+  }
+
+  const total = pages.length;
+  pages.forEach((rec, i) => {
+    const foot = rec.page.querySelector(".paper-foot");
+    if (!foot) return;
+    const spans = foot.querySelectorAll("span");
+    if (spans[0]) spans[0].textContent = footLeft;
+    if (spans[1]) {
+      spans[1].textContent = showPageNo ? (total > 1 ? `Page ${i + 1} of ${total}` : "Page 1") : "";
+      spans[1].style.marginLeft = (showPageNo && !footLeft) ? "auto" : "";
+    }
+  });
+  return { host, pages, dims };
+}
+
+/* Native Android uses the system share sheet; desktop keeps a normal download. */
+async function downloadBlob(blob, filename) {
+  try {
+    if (window.docxzalNative && await window.docxzalNative.saveBlob(blob, filename)) return;
+  } catch (e) {
+    console.error("Native save failed", e);
+  }
+  if (typeof saveAs === "function") { saveAs(blob, filename); return; }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 
 $("#btnPdf").onclick = async () => {
-  const paper = $("#paper");
-  if (!paper || !$("#paperBody").textContent.trim()) { toast("Nothing to export yet"); return; }
-  if (typeof html2pdf === "undefined") { window.print(); return; } // offline fallback
+  const btn = $("#btnPdf"), paperBody = $("#paperBody");
+  if (!paperBody.textContent.trim()) { toast("Nothing to export yet"); return; }
+  if (typeof html2canvas === "undefined" || !(window.jspdf && window.jspdf.jsPDF)) {
+    window.print(); return; // offline fallback
+  }
+  btn.disabled = true;
   toast("Building PDF…");
-  const dims = pageDims(), orient = pageOrient; // snapshot for the async capture
-  const oldZoom = paper.style.zoom, oldTf = paper.style.transform;
-  paper.style.zoom = 1; paper.style.transform = "none"; // capture at true A4 size
-  paper.classList.add("pdf-export");
+  let built = null;
   try {
-    await html2pdf().set({
-      margin: 0,
-      filename: "docxzal-paper.pdf",
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false },
-      jsPDF: { unit: "px", format: [dims.w, dims.h], orientation: orient, hotfixes: ["px_scaling"] },
-      pagebreak: { mode: ["css", "legacy"] }
-    }).from(paper).save();
-    toast("Downloaded docxzal-paper.pdf");
-  } catch (e) { console.error(e); toast("PDF failed — use More → Print instead"); }
-  finally {
-    paper.style.zoom = oldZoom; paper.style.transform = oldTf;
-    paper.classList.remove("pdf-export");
+    await document.fonts.ready;
+    built = buildPdfPages();
+    if (!built) { toast("Nothing to export yet"); return; }
+    await Promise.all([...built.host.querySelectorAll("img")].map(img => img.decode ? img.decode().catch(() => {}) : null));
+
+    const { jsPDF } = window.jspdf;
+    const orient = pageOrient === "landscape" ? "landscape" : "portrait";
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: orient, compress: true });
+    // Phones get a slightly smaller capture: still print-quality, much less memory.
+    const captureScale = (window.docxzalNative && window.docxzalNative.isNative()) ? 1.75 : 2;
+    for (let i = 0; i < built.pages.length; i++) {
+      toast(`Building PDF… page ${i + 1} of ${built.pages.length}`);
+      const canvas = await html2canvas(built.pages[i].page, {
+        scale: captureScale, useCORS: true, backgroundColor: "#ffffff", logging: false
+      });
+      if (i) pdf.addPage("a4", orient);
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG",
+        0, 0, built.dims.wmm, built.dims.hmm, undefined, "FAST");
+      canvas.width = canvas.height = 0; // release the page bitmap before the next one
+    }
+    await downloadBlob(pdf.output("blob"), "docxzal-paper.pdf");
+    toast(`Downloaded docxzal-paper.pdf · ${built.pages.length} page${built.pages.length === 1 ? "" : "s"}`);
+  } catch (e) {
+    console.error(e);
+    toast("PDF failed — use More → Print instead");
+  } finally {
+    if (built) built.host.remove();
+    btn.disabled = false;
   }
 };
 /* ---------- More-formats menu ---------- */
@@ -1038,7 +1378,7 @@ applyBodyScale();
 /* ---------- page margins: presets + custom, preview and Word stay identical ---------- */
 const MARGIN_PRESETS = {
   narrow: { label: 'Narrow (0.5")', inch: 0.5 },
-  normal: { label: 'Normal (1")', inch: 1 },
+  normal: { label: 'Word default — 1" (2.54 cm)', inch: 1 },
   wide: { label: 'Wide (1.5")', inch: 1.5 },
   custom: { label: "Custom…", inch: null }
 };
@@ -1126,6 +1466,10 @@ const NON_TEXT_MODELS = ["image", "embedding", "embed", "tts", "audio", "live", 
 let transportMode = null; // "proxy" | "direct"
 async function transport() {
   if (transportMode) return transportMode;
+  if (window.docxzalNative && window.docxzalNative.isNative()) {
+    transportMode = "direct"; // packaged app: there is no Python proxy on the phone
+    return transportMode;
+  }
   try {
     const r = await fetch("/api/status", { headers: { Accept: "application/json" } });
     const ct = (r.headers.get("content-type") || "").toLowerCase();
@@ -2095,28 +2439,38 @@ async function exportDocx() {
       footKids.push(new docx.TextRun({ text: "Page ", ...HF }));
       footKids.push(new docx.TextRun({ children: [docx.PageNumber.CURRENT], ...HF }));
     }
-    if (!footKids.length) footKids.push(new docx.TextRun({ text: "", size: bsz(18) }));
-    const foot = new docx.Footer({ children: [new docx.Paragraph({
-      tabStops: [{ type: docx.TabStopType.RIGHT, position: tabPosTwips() }],
-      border: { top: { style: docx.BorderStyle.SINGLE, size: 4, color: "e5e0d4" } },
-      spacing: { before: 80, line: 240, lineRule: docx.LineRuleType.AUTO },
-      children: footKids
-    })] });
+    // No footer at all when both the left text and page number are off:
+    // an empty footer still reserves space and draws its rule in Word.
+    const hasFoot = !!(footL || showPg);
+    let foot = null;
+    if (hasFoot) {
+      foot = new docx.Footer({ children: [new docx.Paragraph({
+        tabStops: [{ type: docx.TabStopType.RIGHT, position: tabPosTwips() }],
+        border: { top: { style: docx.BorderStyle.SINGLE, size: 4, color: "e5e0d4" } },
+        spacing: { before: 80, line: 240, lineRule: docx.LineRuleType.AUTO },
+        children: footKids
+      })] });
+    }
     const M = marginTwips(); // preview padding and Word margins are the same inches
-    const pageProps = { margin: { top: M, bottom: M, left: M, right: M }, size: { width: dims.tw, height: dims.th } };
+    const HFDist = Math.round(0.5 * 1440); // Word's default header/footer distance (0.5")
+    const pageProps = { margin: { top: M, bottom: M, left: M, right: M, header: HFDist, footer: HFDist }, size: { width: dims.tw, height: dims.th } };
+    const footProps = foot ? { footers: { default: foot } } : {};
     const lastKids = kids.splice(headerCount); // body paragraphs (header kids stay single-column)
     const sections = [];
-    if (cols === 2) {
+    if (cols === 2 && kids.length) {
       // Word parity: header on top in one column, questions flow in two (continuous section break)
-      sections.push({ children: kids, properties: { page: pageProps, column: { count: 1 } }, footers: { default: foot } });
-      sections.push({ children: lastKids, properties: { page: pageProps, column: { count: 2, space: 720 }, type: docx.SectionType.CONTINUOUS }, footers: { default: foot } });
+      sections.push({ children: kids, properties: { page: pageProps, column: { count: 1 } }, ...footProps });
+      sections.push({ children: lastKids, properties: { page: pageProps, column: { count: 2, space: 720 }, type: docx.SectionType.CONTINUOUS }, ...footProps });
+    } else if (cols === 2) {
+      // Header off: a single two-column section (an empty leading section makes a blank page)
+      sections.push({ children: lastKids, properties: { page: pageProps, column: { count: 2, space: 720 } }, ...footProps });
     } else {
-      sections.push({ children: kids.concat(lastKids), properties: { page: pageProps, column: { count: 1 } }, footers: { default: foot } });
+      sections.push({ children: kids.concat(lastKids), properties: { page: pageProps, column: { count: 1 } }, ...footProps });
     }
     const doc = new docx.Document({ sections });
     let blob = await docx.Packer.toBlob(doc);
     if (orient === "landscape") blob = await patchLandscape(blob);
-    saveAs(blob, "docxzal-paper.docx");
+    await downloadBlob(blob, "docxzal-paper.docx");
     toast("Downloaded docxzal-paper.docx");
   } catch (e) { console.error(e); toast("Export failed — trying .doc"); exportDoc(); }
 }
@@ -2134,16 +2488,23 @@ async function patchLandscape(blob) { // docx emits correct w/h but keeps orient
     });
   } catch { return blob; }
 }
-function exportDoc() {
+async function exportDoc() {
   const f = docFonts();
   const cols = pageCols === 2 ? "column-count:2;column-gap:48px" : "";
+  let head = "";
+  if ($("#cHeader").checked) {
+    const meta = $("#cMeta").checked ? ` • ${$("#sMeta").value}` : "";
+    const instr = ($("#cInstrBox").checked ? ($("#sInstr").value || "").trim() : "");
+    head = `<h1>${$("#sSchool").value}</h1><p style="text-align:center">${$("#sTitle").value} — ${$("#sSub").value}${meta}</p>` +
+      (instr ? `<p>${instr}</p>` : "") + `<hr/>`;
+  }
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>
     @page{size:A4 ${pageOrient};margin:${marginInch()}in}
     body{font-family:${f.bodyCss};font-size:${(12 * bScale()).toFixed(1)}pt}h1,h2{font-family:${f.headCss};text-align:center}h1{font-size:${(20 * hScale()).toFixed(1)}pt}h2{font-size:${(14 * hScale()).toFixed(1)}pt}table{border-collapse:collapse;width:100%}th,td{border:1.5pt solid #000;padding:6px}th{background:#EDE9FE}pre{background:#F1F5F9;padding:10px}.q-body{${cols}}</style></head><body>
-    <h1>${$("#sSchool").value}</h1><p style="text-align:center">${$("#sTitle").value} — ${$("#sSub").value} • ${$("#sMeta").value}</p><hr/>
+    ${head}
     <div class="q-body">${$("#paperBody").innerHTML}</div>
     ${keyOn() ? '<div style="page-break-before:always"></div>' + $("#paperKey").innerHTML : ""}</body></html>`;
-  saveAs(new Blob(["\ufeff", html], { type: "application/msword" }), "docxzal-paper.doc");
+  await downloadBlob(new Blob(["\ufeff", html], { type: "application/msword" }), "docxzal-paper.doc");
   toast("Downloaded docxzal-paper.doc");
 }
 /* ---------- Focus mode: hide sidebar, full paper ---------- */
@@ -2174,17 +2535,23 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 /* ---------- Markdown / HTML download ---------- */
-function exportMd() {
+async function exportMd() {
   const src = $("#rawInput").value.trim() || $("#paperBody").innerText.trim();
   if (!src) { toast("Nothing to export yet"); return; }
-  saveAs(new Blob([src], { type: "text/markdown" }), "docxzal-paper.md");
+  await downloadBlob(new Blob([src], { type: "text/markdown" }), "docxzal-paper.md");
   toast("Downloaded docxzal-paper.md");
 }
-function exportHtml() {
+async function exportHtml() {
   const body = $("#paperBody");
   if (!body || !body.textContent.trim()) { toast("Nothing to export yet"); return; }
   const H = id => (((document.getElementById(id) || {}).textContent) || "").trim();
   const f = docFonts();
+  let head = "";
+  if ($("#cHeader").checked) {
+    head = `<h1>${H("pSchool")}</h1><h2 style="text-align:center">${H("pTitle")}</h2>` +
+      ($("#cMeta").checked ? `<p style="text-align:center">${H("pMeta")}</p>` : "") + `<hr>` +
+      ($("#cInstrBox").checked && H("pInstr") ? `<p style="white-space:pre-wrap">${H("pInstr")}</p>` : "");
+  }
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>docxzal-paper</title>` +
     `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">` +
     `<style>@page{size:A4 ${pageOrient};margin:${marginInch()}in}` +
@@ -2192,12 +2559,12 @@ function exportHtml() {
     `h1,h2{font-family:${f.headCss}}` +
     `h1{text-align:center;font-size:${(26 * hScale()).toFixed(1)}px}h2{font-size:${(16 * hScale()).toFixed(1)}px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #666;padding:6px}` +
     `pre{background:#22201c;color:#f0e9db;padding:12px;border-radius:8px;overflow:auto}` +
-    `blockquote{border-left:3px solid #b26a2b;background:#faf6ee;padding:6px 12px;margin:10px 0}</style></head><body>` +
-    `<h1>${H("pSchool")}</h1><h2 style="text-align:center">${H("pTitle")}</h2>` +
-    `<p style="text-align:center">${H("pMeta")}</p><hr><p>${H("pInstr")}</p>${body.innerHTML}` +
+    `blockquote{border-left:3px solid #b26a2b;background:#faf6ee;padding:6px 12px;margin:10px 0}` +
+    `@media print{body{max-width:none;margin:0;padding:0}}</style></head><body>` +
+    `${head}${body.innerHTML}` +
     (keyOn() ? `<hr style="page-break-before:always;border:0">${$("#paperKey").innerHTML}` : "") +
     `</body></html>`;
-  saveAs(new Blob([html], { type: "text/html" }), "docxzal-paper.html");
+  await downloadBlob(new Blob([html], { type: "text/html" }), "docxzal-paper.html");
   toast("Downloaded docxzal-paper.html");
 }
 
@@ -2215,10 +2582,11 @@ async function exportPptx() {
     pptx.defineLayout({ name: "WIDE", width: 13.33, height: 7.5 });
     pptx.layout = "WIDE";
     const cover = pptx.addSlide();
+    const showHead = $("#cHeader").checked;
     cover.background = { color: "1F2937" };
-    cover.addText(H("pSchool") || "Question Paper", { x: 0.5, y: 1.4, w: 12.33, h: 1, fontSize: 32, bold: true, color: "FFFFFF", align: "center", fontFace: HF });
-    cover.addText(H("pTitle"), { x: 0.5, y: 2.5, w: 12.33, h: 0.7, fontSize: 22, color: "D9D9D9", align: "center", fontFace: HF });
-    cover.addText(H("pMeta"), { x: 0.5, y: 3.2, w: 12.33, h: 0.6, fontSize: 14, color: "BFBFBF", align: "center", fontFace: BF });
+    cover.addText(showHead ? (H("pSchool") || "Question Paper") : "Question Paper", { x: 0.5, y: 1.4, w: 12.33, h: 1, fontSize: 32, bold: true, color: "FFFFFF", align: "center", fontFace: HF });
+    cover.addText(showHead ? H("pTitle") : "", { x: 0.5, y: 2.5, w: 12.33, h: 0.7, fontSize: 22, color: "D9D9D9", align: "center", fontFace: HF });
+    cover.addText(showHead && $("#cMeta").checked ? H("pMeta") : "", { x: 0.5, y: 3.2, w: 12.33, h: 0.6, fontSize: 14, color: "BFBFBF", align: "center", fontFace: BF });
     let slide = pptx.addSlide(), y = 0.4;
     const need = (h) => { if (y + h > 7.0) { slide = pptx.addSlide(); y = 0.4; } };
     [...body.children].forEach(ch => {
@@ -2260,7 +2628,8 @@ async function exportPptx() {
         y += h + 0.1;
       }
     });
-    await pptx.writeFile({ fileName: "docxzal-paper.pptx" });
+    const blob = await pptx.write({ outputType: "blob" });
+    await downloadBlob(blob, "docxzal-paper.pptx");
     toast("Downloaded docxzal-paper.pptx");
   } catch (e) { console.error(e); toast("PPTX failed"); }
 }

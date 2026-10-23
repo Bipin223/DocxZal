@@ -5,3 +5,11 @@ __pycache__/
 .env.*
 *.key
 .gemini-key
+node_modules/
+www/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab

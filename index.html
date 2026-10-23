@@ -2,28 +2,66 @@
 <html lang="en" data-theme="forest-day">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#edf3e8" />
 <title>Docxzal — AI Paper to Word</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-<link rel="stylesheet" href="styles.css?v=43" />
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<link rel="icon" type="image/svg+xml" href="favicon.svg?v=57" />
+<link rel="stylesheet" href="fonts/poppins.css" />
+<link rel="stylesheet" href="vendor/katex/katex.min.css" />
+<link rel="stylesheet" href="styles.css?v=57" />
+<script src="vendor/marked/marked.umd.js"></script>
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/contrib/auto-render.min.js"></script>
+<script src="vendor/docx/index.umd.js"></script>
+<script src="vendor/jszip/jszip.min.js"></script>
+<script src="vendor/pptxgenjs/pptxgen.bundle.js"></script>
+<script src="vendor/file-saver/FileSaver.min.js"></script>
+<script src="vendor/html2canvas/html2canvas.min.js"></script>
+<script src="vendor/jspdf/jspdf.umd.min.js"></script>
+<script src="native.js?v=57"></script>
 </head>
 <body>
 
+<div class="intro-layer" id="introLayer" aria-hidden="true" title="Click to skip">
+  <span class="intro-aurora intro-aurora-one"></span>
+  <span class="intro-aurora intro-aurora-two"></span>
+  <div class="intro-lockup">
+    <div class="intro-mark-wrap">
+      <span class="intro-halo"></span>
+      <div class="intro-mark">
+        <svg viewBox="0 0 64 64" role="img" aria-label="Docxzal">
+          <defs>
+            <linearGradient id="introMarkGrad" x1="8" y1="6" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#e0a267"/>
+              <stop offset="1" stop-color="#a85f24"/>
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#introMarkGrad)"/>
+          <path class="intro-mark-line" pathLength="100" d="M23 12h13l9 9v24a5 5 0 0 1-5 5H23a5 5 0 0 1-5-5V17a5 5 0 0 1 5-5Z" fill="none" stroke="#fffdf7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="intro-mark-fold" pathLength="100" d="M36 12v9h9" fill="none" stroke="#fffdf7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="intro-mark-rule" d="M25 29h13M25 35h9" fill="none" stroke="#fffdf7" stroke-width="2.4" stroke-linecap="round" opacity="0"/>
+          <circle class="intro-check" cx="45" cy="45" r="10" fill="#7fb069"/>
+          <path class="intro-check-mark" pathLength="100" d="m40.8 45.1 2.7 2.8 5-5.6" fill="none" stroke="#fff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="intro-word" aria-label="Docxzal">
+      <span style="--i:0">D</span><span style="--i:1">o</span><span style="--i:2">c</span><span style="--i:3">x</span><span style="--i:4">z</span><span style="--i:5">a</span><span style="--i:6">l</span>
+    </div>
+    <p class="intro-sub">AI &rarr; Word papers</p>
+    <span class="intro-rule"><span></span></span>
+  </div>
+  <p class="intro-foot">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z"/></svg>
+    by Bipin Rizal
+  </p>
+  <button class="intro-skip" type="button" tabindex="-1" aria-label="Skip intro">Skip</button>
+</div>
+<script src="intro.js?v=57"></script>
+
 <header class="topbar glass pop-in">
   <div class="brand">
-    <img src="favicon.svg" alt="Docxzal" class="logo-img" />
+    <img src="favicon.svg?v=57" alt="Docxzal" class="logo-img" />
     <div><strong>Docxzal</strong><small>AI → Word papers</small></div>
   </div>
   <button id="themeToggle" class="icon-btn theme-toggle" aria-label="Switch theme" aria-pressed="false" title="Day / night">
@@ -174,7 +212,7 @@
           <div class="dd-menu" role="listbox" aria-labelledby="lblBSize" hidden></div>
         </div></div>
         <div><label id="lblMargin">Page margins</label><div class="dd" id="ddMargin">
-          <button class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblMargin"><span class="dd-val">Normal (1")</span><svg class="dd-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <button class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblMargin"><span class="dd-val">Word default — 1" (2.54 cm)</span><svg class="dd-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
           <div class="dd-menu" role="listbox" aria-labelledby="lblMargin" hidden></div>
         </div></div>
         <label id="marginCustomWrap" hidden>Custom margin, inches (all sides)<input id="fMargin" type="number" min="0.25" max="2" step="0.05" value="1" /></label>
@@ -187,7 +225,7 @@
           <div class="dd-menu" role="listbox" aria-labelledby="lblCols" hidden></div>
         </div></div>
         <div class="checks">
-          <label class="switch"><input type="checkbox" id="cHeader" checked /><span></span>Header</label>
+          <label class="switch"><input type="checkbox" id="cHeader" /><span></span>Header</label>
           <label class="switch"><input type="checkbox" id="cNativeMath" checked /><span></span>Native Word equations</label>
         </div>
         <p class="hint" id="mathNote">Full conversion: fractions, roots, scripts, ∑ ∫ lim, matrices, cases, align, accents — all native Word equations. PDF downloads directly; Print is under More.</p>
@@ -279,7 +317,7 @@
   <div class="modal glass pop-in author-card">
     <button class="modal-x icon-btn" id="authorClose" aria-label="Close">✕</button>
     <div class="photo-wrap">
-      <img src="author.jpg" alt="Bipin Rizal" class="author-photo" id="authorPhoto" />
+      <img src="author.jpg" alt="Bipin Rizal" class="author-photo" id="authorPhoto" loading="lazy" decoding="async" />
       <span class="author-fallback" id="authorFallback" aria-hidden="true">BR</span>
     </div>
     <h3 id="authorName">Bipin Rizal</h3>
@@ -305,6 +343,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>

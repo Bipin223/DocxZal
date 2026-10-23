@@ -2,6 +2,8 @@
 
 **Design:** warm minimalist caffeine theme — borderless tonal surfaces, Poppins, Lucide outline icons, gradient separators. Light/dark toggle uses a circular View-Transitions reveal; tabs use center-out underlines + hover wave; Photo-to-AI is an expandable section. There is no model picker: the model is chosen and swapped automatically from the key's live catalogue.
 
+**Brand:** the warm paper + green check mark (small in the header) is shared by the web page, favicon, Android launcher and splash. A short logo intro plays once per tab; click the Docxzal logo to replay it (`?intro=1` also forces it).
+
 Paste messy output from Gemini / ChatGPT → clean **A4 preview** → **proper .docx with native editable Word equations** + **PDF**.
 
 Author: **Bipin Rizal** — https://github.com/Bipin223
@@ -27,6 +29,30 @@ Save the author photo as `author.jpg` next to `index.html` (fallback shows BR in
 
 ## Deploy to GitHub Pages
 Push to repo → Settings → Pages → `main` / root, or use `.github/workflows/pages.yml`.
+
+## Android app (Capacitor)
+The phone app is a self-contained Capacitor build: all JS, CSS, fonts and libraries are bundled inside the APK, so preview and exports work offline. AI calls go **directly** to Gemini (there is no Python proxy on a phone), and exports open Android's native save/share sheet instead of a browser download.
+
+**Requirements:** Node 20+, Android SDK platform 36 + build-tools 35, and **JDK 21**. Newer JDKs (25/26) fail with `Unsupported class file major version 69`; Gradle 8.14.3 cannot run on them.
+
+Build:
+```powershell
+npm install
+npm run sync                 # build www/ + copy into android/
+cd android
+$env:JAVA_HOME="$env:LOCALAPPDATA\opencode-jdk21\jdk-21.0.12.1+1"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+.\gradlew.bat assembleDebug
+```
+
+APK: `android\app\build\outputs\apk\debug\app-debug.apk`  
+Install on a connected phone: `adb install -r android\app\build\outputs\apk\debug\app-debug.apk`
+
+- App id `com.bipinrizal.docxzal`, name **Docxzal**; launcher icon and splash are generated in `android/app/src/main/res/`.
+- `www/` is generated — edit the root `app.js` / `index.html` / `styles.css`, then run `npm run sync` again. Never edit `www/` or `android/app/src/main/assets/public/` by hand.
+- Re-download the pinned vendor libraries with `npm run vendor` if `vendor/` is missing.
+- This is a debug APK (installable by sideloading). For Play Store distribution, create a signed release build in Android Studio.
+- Runtime-tested: web preview/exports. Native-only behaviour (share sheet, camera permission, safe-area layout) still needs a check on a physical phone.
 
 ## Conversion coverage (the essence)
 Every LaTeX construct becomes its proper Word form — verified against the `docx@8.5.0` OMML API, 13/13 engine checks green:

@@ -1,0 +1,22 @@
+{
+  "name": "docxzal",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Docxzal — AI paper to Word, packaged for Android with Capacitor",
+  "scripts": {
+    "vendor": "node scripts/fetch-vendor.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "sync": "npm run build:web && npx cap sync android",
+    "apk": "npm run sync && cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}
