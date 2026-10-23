@@ -8,22 +8,22 @@
         android:translateX="22"
         android:translateY="22">
         <path
-            android:fillColor="#FFFDF7"
+            android:fillColor="#F8FAFC"
             android:pathData="M23,12h13l9,9v24a5,5 0 0,1 -5,5H23a5,5 0 0,1 -5,-5V17a5,5 0 0,1 5,-5z" />
         <path
-            android:fillColor="#ECD6BB"
+            android:fillColor="#CBD5E1"
             android:pathData="M36,12v9h9z" />
         <path
-            android:fillAlpha="0.38"
-            android:fillColor="#A85F24"
+            android:fillAlpha="0.28"
+            android:fillColor="#111827"
             android:pathData="M25,28h13v2H25zM25,34h9v2h-9z" />
         <path
-            android:fillColor="#7FB069"
+            android:fillColor="#F8FAFC"
             android:pathData="M35,45a10,10 0 1,0 20,0a10,10 0 1,0 -20,0z" />
         <path
             android:fillColor="#00000000"
             android:pathData="M40.8,45.1l2.7,2.8l5,-5.6"
-            android:strokeColor="#FFFFFF"
+            android:strokeColor="#111827"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="2.7" />

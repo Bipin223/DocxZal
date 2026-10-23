@@ -18,65 +18,54 @@ const NULL_EL = new Proxy(function () {}, {
 const toast = (m) => { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); };
 const CHECK_SVG = '<svg class="dd-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
 
-/* ---------- Theme families: palette picks the family, toggle flips its day/night ---------- */
-const THEMES = [
-  { value: "light", label: "Light" }, { value: "dark", label: "Dark" },
-  { value: "amoled", label: "AMOLED" }, { value: "amoled-day", label: "AMOLED Day" },
-  { value: "mono", label: "Mono" }, { value: "mono-day", label: "Mono Day" },
-  { value: "forest", label: "Forest" }, { value: "forest-day", label: "Forest Day" }
-];
-const DAY_OF = { paper: "light", amoled: "amoled-day", mono: "mono-day", forest: "forest-day" };
-const NIGHT_OF = { paper: "dark", amoled: "amoled", mono: "mono", forest: "forest" };
-const PALETTE = [
-  { family: "paper", label: "Paper", bg: "#f6f1e8", acc: "#b26a2b" },
-  { family: "amoled", label: "AMOLED", bg: "#000000", acc: "#d9985a" },
-  { family: "mono", label: "Mono", bg: "#0f0f0f", acc: "#d4d4d4" },
-  { family: "forest", label: "Forest", bg: "#0b130d", acc: "#7fb069" }
-];
+/* ---------- Theme: Bone & Ink / Midnight Slate ---------- */
+const THEMES = [{ value: "bone", label: "Bone & Ink" }, { value: "midnight", label: "Midnight Slate" }];
 function currentTheme() {
-  const t = document.documentElement.dataset.theme;
-  return THEMES.some(x => x.value === t) ? t : "dark";
-}
-function themeFamily(t) {
-  t = t || currentTheme();
-  return (t === "light" || t === "dark") ? "paper" : t.replace(/-day$/, "");
+  return document.documentElement.dataset.theme === "midnight" ? "midnight" : "bone";
 }
 function themeMode(t) {
-  t = t || currentTheme();
-  return (t === "light" || /-day$/.test(t)) ? "day" : "night";
+  return (t || currentTheme()) === "bone" ? "day" : "night";
+}
+function syncThemeColor() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = currentTheme() === "midnight" ? "#090c11" : "#f6f6f4";
 }
 function paintToggle() {
   const day = themeMode() === "day";
   const b = $("#themeToggle");
   b.setAttribute("aria-pressed", String(day));
-  b.setAttribute("aria-label", day ? "Switch to night mode" : "Switch to day mode");
+  b.setAttribute("aria-label", day ? "Switch to midnight mode" : "Switch to bone mode");
+  b.title = day ? "Midnight Slate" : "Bone & Ink";
 }
 (function initTheme() {
-  let s = "forest-day", v = "";
-  try {
-    s = localStorage.getItem("bd_theme") || "forest-day";
-    v = localStorage.getItem("bd_theme_v") || "";
-  } catch {}
-  if (!THEMES.some(x => x.value === s)) s = "forest-day";
-  if (v !== "2") s = "forest-day"; // new default ships once to existing profiles too
+  let s = "";
+  try { s = localStorage.getItem("bd_theme") || ""; } catch {}
+  // Migrate the older multi-hue themes to the neutral pair.
+  if (s === "light" || s.endsWith("-day")) s = "bone";
+  else if (s === "dark" || s === "amoled" || s === "mono" || s === "forest") s = "midnight";
+  if (s !== "midnight") s = "bone";
   document.documentElement.dataset.theme = s;
-  try { localStorage.setItem("bd_theme", s); localStorage.setItem("bd_theme_v", "2"); } catch {}
+  try { localStorage.setItem("bd_theme", s); localStorage.setItem("bd_theme_v", "3"); } catch {}
+  syncThemeColor();
   paintToggle();
 })();
-let revealing = false; // a running reveal never blocks the next pick
+let revealing = false;
 function setTheme(n, ev) {
   if (n === currentTheme() || !THEMES.some(x => x.value === n)) return;
   const apply = () => {
     document.documentElement.dataset.theme = n;
     try { localStorage.setItem("bd_theme", n); } catch {}
+    syncThemeColor();
     paintToggle();
   };
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const keyboard = ev && ev.detail === 0; // Enter/Space: no pointer position → instant
+  const keyboard = ev && ev.detail === 0;
   if (!ev || keyboard || reduce || revealing || !document.startViewTransition) { apply(); return; }
   revealing = true;
   const done = () => { revealing = false; };
-  const x = ev.clientX, y = ev.clientY;
+  const rect = $("#themeToggle").getBoundingClientRect();
+  const x = ev.clientX || rect.left + rect.width / 2;
+  const y = ev.clientY || rect.top + rect.height / 2;
   const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
   try {
     const tr = document.startViewTransition(apply);
@@ -84,50 +73,30 @@ function setTheme(n, ev) {
     tr.ready.then(() => {
       document.documentElement.animate(
         { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-        { duration: 700, easing: "cubic-bezier(.4,0,.2,1)", pseudoElement: "::view-transition-new(root)" });
+        { duration: 550, easing: "cubic-bezier(.22,1,.36,1)", pseudoElement: "::view-transition-new(root)" });
     }).catch(() => {});
   } catch { done(); apply(); }
 }
-/* ---------- Theme palette: family picker (keeps the current day/night mode) ---------- */
-/* Closed until clicked; closes on pick, outside click, or Escape. */
-(function initPalette() {
-  const btn = document.getElementById("themeMoreBtn"), pop = document.getElementById("themePalette");
-  if (!btn || !pop) return;
-  PALETTE.forEach(p => {
-    const b = document.createElement("button");
-    b.className = "sw"; b.setAttribute("role", "option");
-    b.dataset.family = p.family; b.title = p.label;
-    b.setAttribute("aria-label", p.label + " theme family");
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    dot.style.background = `linear-gradient(135deg,${p.acc} 0 50%,${p.bg} 50% 100%)`;
-    const lb = document.createElement("span");
-    lb.className = "sw-label"; lb.textContent = p.label;
-    b.append(dot, lb);
-    b.addEventListener("click", (e) => {
-      setTheme(themeMode() === "day" ? DAY_OF[p.family] : NIGHT_OF[p.family], e);
-      close();
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    });
-    pop.append(b);
-  });
-  let open = false;
-  const paint = () => pop.querySelectorAll(".sw").forEach(s =>
-    s.setAttribute("aria-selected", String(s.dataset.family === themeFamily())));
-  function close() { open = false; btn.setAttribute("aria-expanded", "false"); pop.classList.remove("open"); pop.hidden = true; }
-  new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+$("#themeToggle").addEventListener("click", (e) => setTheme(themeMode() === "day" ? "midnight" : "bone", e));
+
+/* ---------- Floating dock: shrink on scroll + reading progress ---------- */
+(function initDock() {
+  const header = document.getElementById("siteHeader");
+  const bar = document.getElementById("dockProgress");
+  if (!header) return;
+  let frame = 0;
+  function paint() {
+    frame = 0;
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    header.classList.toggle("is-scrolled", y > 12);
+    const max = document.documentElement.scrollHeight - innerHeight;
+    if (bar) bar.style.transform = `scaleX(${max > 0 ? Math.min(1, Math.max(0, y / max)) : 0})`;
+  }
+  function queue() { if (!frame) frame = requestAnimationFrame(paint); }
+  window.addEventListener("scroll", queue, { passive: true });
+  window.addEventListener("resize", queue, { passive: true });
   paint();
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    open = !open;
-    btn.setAttribute("aria-expanded", String(open));
-    if (open) { paint(); pop.hidden = false; pop.classList.add("open"); }
-    else close();
-  });
-  document.addEventListener("click", (e) => { if (open && !document.getElementById("ddTheme").contains(e.target)) close(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) { close(); btn.focus(); } });
 })();
-$("#themeToggle").addEventListener("click", (e) => setTheme(themeMode() === "day" ? NIGHT_OF[themeFamily()] : DAY_OF[themeFamily()], e));
 
 /* ---------- Tabs ---------- */
 const tabs = [...document.querySelectorAll(".tab")];
@@ -573,6 +542,34 @@ function protectMath(text) {
 function restoreMath(html) {
   return html.replace(/\u0000(\d+)\u0000/g, (m, i) => (mathStash[+i] != null ? mathStash[+i] : m));
 }
+/* Long inline code (e.g. linear-gradient(...)) must wrap at spaces without
+   breaking at its hyphens — otherwise its background paints as a huge block. */
+function splitLongInlineCode(root) {
+  root.querySelectorAll("code").forEach(code => {
+    if (code.closest("pre")) return;
+    const text = code.textContent;
+    if (!/\S\s+\S/.test(text)) return; // only spans with word gaps can be split safely
+    const block = code.closest("p,li,td,th,blockquote,div") || code.parentElement;
+    const maxW = Math.max(140, (block ? block.clientWidth : root.clientWidth) - 10);
+    const wide = code.getClientRects().length > 1 || code.getBoundingClientRect().width > maxW;
+    if (!wide) return;
+    const parts = text.trim().split(/\s+/);
+    if (parts.length < 2) { // a single enormous token: at least keep it on the page
+      code.style.whiteSpace = "normal";
+      code.style.overflowWrap = "anywhere";
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    parts.forEach((part, i) => {
+      if (i) frag.appendChild(document.createTextNode(" "));
+      const c = document.createElement("code");
+      c.textContent = part;
+      frag.appendChild(c);
+    });
+    code.replaceWith(frag);
+  });
+}
+
 function render() {
   syncHeader();
   const raw = $("#rawInput").value;
@@ -591,6 +588,7 @@ function render() {
       { left: "\\(", right: "\\)", display: false }, { left: "\\[", right: "\\]", display: true }
     ], throwOnError: false });
   } catch {}
+  splitLongInlineCode(body);
   renderKey();
   histSnap(true);
   updatePageChip();
@@ -823,6 +821,7 @@ function renderKey() {
       { left: "\\(", right: "\\)", display: false }, { left: "\\[", right: "\\]", display: true }
     ], throwOnError: false });
   } catch {}
+  splitLongInlineCode(el);
 }
 $("#cKey").addEventListener("change", () => {
   const w = $("#keyWrap");
@@ -918,7 +917,7 @@ function buildPdfPages() {
   const host = document.createElement("div");
   host.className = "pdf-doc";
   host.setAttribute("aria-hidden", "true");
-  ["--doc-body", "--doc-head", "--hscale", "--bscale"].forEach(k => {
+  ["--doc-body", "--doc-head", "--hscale", "--bscale", "--doc-align"].forEach(k => {
     const v = paper.style.getPropertyValue(k);
     if (v) host.style.setProperty(k, v);
   });
@@ -1036,13 +1035,23 @@ function buildPdfPages() {
       part.tbody.removeChild(r);
       if (!part.tbody.children.length) { // a single row is taller than the sheet
         if (current.flow.children.length > 1) { // there is other content above the table
+          // Keep a short bold label ("Dark — Midnight Slate") with its table.
+          let kicker = null;
+          const prior = part.table.previousElementSibling;
+          if (prior && prior.tagName === "P" && prior.querySelector("strong") &&
+              prior.textContent.trim().length < 90 && prior.getBoundingClientRect().height < 60) kicker = prior;
+          if (kicker) current.flow.removeChild(kicker);
           part.table.remove();
           nextPage();
+          if (kicker) current.flow.appendChild(kicker);
           part = skeleton();
           current.flow.appendChild(part.table);
         }
         part.tbody.appendChild(r);
-        if (i < bodyRows.length - 1) {
+        // Only force the next row onto a new page if this row still does not
+        // fit a fresh sheet (a genuinely over-tall row). A row that merely
+        // missed the previous page's tail should stay and share this page.
+        if (!fits(current) && i < bodyRows.length - 1) {
           nextPage();
           part = skeleton();
           current.flow.appendChild(part.table);
@@ -1115,6 +1124,12 @@ function buildPdfPages() {
         else splitPre(block);
         return;
       }
+      // A table that misses the remaining space should fill this sheet and
+      // continue on the next one (like Word) instead of jumping whole pages.
+      if (block.tagName === "TABLE" && current.flow.children.length) {
+        splitTable(block);
+        return;
+      }
     }
 
     const heading = trailingHeading(current);
@@ -1155,7 +1170,7 @@ function buildPdfPages() {
   if (!twoCol && pages.length > 1) {
     const last = pages[pages.length - 1], prev = pages[pages.length - 2];
     if (!last.key && !prev.key && last.flow.children.length) {
-      const target = last.flow.clientHeight * 0.34;
+      const target = last.flow.clientHeight * 0.22;
       while (contentHeight(last) < target && prev.flow.children.length > 1) {
         const block = prev.flow.lastElementChild;
         last.flow.prepend(block);
@@ -1338,7 +1353,7 @@ makeDropdown("ddFont", {
 applyDocFont();
 
 /* ---------- heading size scale: preview and Word share the same factor ---------- */
-const H_SCALES = { small: { label: "Small", k: 0.85 }, normal: { label: "Normal", k: 1 }, large: { label: "Large", k: 1.15 }, xl: { label: "Extra large", k: 1.3 } };
+const H_SCALES = { small: { label: "Small", k: 0.85 }, normal: { label: "Normal", k: 1 }, large: { label: "Large", k: 1.15 }, xl: { label: "Extra large", k: 1.3 }, xxl: { label: "Huge", k: 1.45 }, xxxl: { label: "Max", k: 1.6 } };
 let hScaleKey = "normal";
 try { hScaleKey = localStorage.getItem("bd_hscale") || "normal"; } catch {}
 if (!H_SCALES[hScaleKey]) hScaleKey = "normal";
@@ -1356,7 +1371,7 @@ makeDropdown("ddHSize", {
 applyHeadScale();
 
 /* ---------- body text size scale: preview and Word share the same factor ---------- */
-const B_SCALES = { small: { label: "Small", k: 0.9 }, normal: { label: "Normal", k: 1 }, large: { label: "Large", k: 1.1 }, xl: { label: "Extra large", k: 1.2 } };
+const B_SCALES = { small: { label: "Small", k: 0.9 }, normal: { label: "Normal", k: 1 }, large: { label: "Large", k: 1.1 }, xl: { label: "Extra large", k: 1.2 }, xxl: { label: "Huge", k: 1.35 }, xxxl: { label: "Max", k: 1.5 } };
 let bScaleKey = "normal";
 try { bScaleKey = localStorage.getItem("bd_bscale") || "normal"; } catch {}
 if (!B_SCALES[bScaleKey]) bScaleKey = "normal";
@@ -1366,6 +1381,7 @@ const bsz = (half) => Math.round(half * bScale()); // small print (meta, instr, 
 function applyBodyScale() {
   const paper = $("#paper");
   if (paper && paper.style) paper.style.setProperty("--bscale", String(bScale()));
+  splitLongInlineCode($("#paperBody"));
   try { localStorage.setItem("bd_bscale", bScaleKey); } catch {}
 }
 makeDropdown("ddBSize", {
@@ -1374,6 +1390,26 @@ makeDropdown("ddBSize", {
   onChange: (v) => { if (B_SCALES[v]) { bScaleKey = v; applyBodyScale(); } }
 });
 applyBodyScale();
+
+/* ---------- text alignment: document default + per-paragraph toolbar ---------- */
+const ALIGNMENTS = {
+  left: { label: "Left" }, center: { label: "Center" },
+  right: { label: "Right" }, justify: { label: "Justify" }
+};
+let alignKey = "left";
+try { alignKey = localStorage.getItem("bd_align") || "left"; } catch {}
+if (!ALIGNMENTS[alignKey]) alignKey = "left";
+function applyDocAlign() {
+  const paper = $("#paper");
+  if (paper && paper.style) paper.style.setProperty("--doc-align", alignKey);
+  try { localStorage.setItem("bd_align", alignKey); } catch {}
+}
+makeDropdown("ddAlign", {
+  options: Object.entries(ALIGNMENTS).map(([value, a]) => ({ value, label: a.label })),
+  value: alignKey,
+  onChange: (v) => { if (ALIGNMENTS[v]) { alignKey = v; applyDocAlign(); } }
+});
+applyDocAlign();
 
 /* ---------- page margins: presets + custom, preview and Word stay identical ---------- */
 const MARGIN_PRESETS = {
@@ -1406,6 +1442,7 @@ function applyMargins() {
   let st = document.getElementById("pgMargin");
   if (!st) { st = document.createElement("style"); st.id = "pgMargin"; document.head.append(st); }
   st.textContent = `@media print{@page{size:A4 ${pageOrient};margin:${(marginInch() * 25.4).toFixed(1)}mm}}`;
+  splitLongInlineCode($("#paperBody"));
   try { localStorage.setItem("bd_margin", marginKey); localStorage.setItem("bd_margin_custom", String(marginCustom)); } catch {}
   applyZoom();
 }
@@ -2256,6 +2293,14 @@ function runsFromNodes(nodes, st = {}) {
   return out;
 }
 function runsFromNode(node, st = {}) { return runsFromNodes([...node.childNodes], st); }
+function wordAlign(el) {
+  if (!el || el.nodeType !== 1) return undefined;
+  const a = getComputedStyle(el).textAlign;
+  if (a === "center") return docx.AlignmentType.CENTER;
+  if (a === "right" || a === "end") return docx.AlignmentType.RIGHT;
+  if (a === "justify") return docx.AlignmentType.JUSTIFIED;
+  return undefined;
+}
 function blocksFromEl(el, wrap = {}) {
   const tag = el.tagName.toLowerCase();
   const LINE = { line: 420, lineRule: docx.LineRuleType.AUTO }; // preview: 15px Georgia, line-height 1.75
@@ -2272,7 +2317,7 @@ function blocksFromEl(el, wrap = {}) {
       children: runsFromNode(el, { size: cfg.size, b: true, font: docFonts().headWord, color: cfg.color }),
       heading: cfg.lvl, // real Word heading style → round-trips through Import too
       spacing: { before: 180, after: 180, ...LINE },
-      alignment: cfg.center ? docx.AlignmentType.CENTER : undefined,
+      alignment: cfg.center ? docx.AlignmentType.CENTER : wordAlign(el),
       keepNext: true,
       ...wrap
     })];
@@ -2281,9 +2326,9 @@ function blocksFromEl(el, wrap = {}) {
     const kids = [];
     el.innerText.split("\n").forEach((ln, k) => {
       if (k) kids.push(new docx.TextRun({ text: "", size: 19, break: 1 }));
-      kids.push(new docx.TextRun({ text: ln || " ", size: 19, font: "Consolas", color: "f0e9db" }));
+      kids.push(new docx.TextRun({ text: ln || " ", size: 19, font: "Consolas", color: "f8fafc" }));
     });
-    return [new docx.Paragraph({ children: kids, shading: { fill: "22201c" }, spacing: { before: 180, after: 180, line: 360, lineRule: docx.LineRuleType.AUTO }, ...wrap })];
+    return [new docx.Paragraph({ children: kids, shading: { fill: "111827" }, spacing: { before: 180, after: 180, line: 360, lineRule: docx.LineRuleType.AUTO }, ...wrap })];
   }
   if (tag === "table") {
     const bd = { style: docx.BorderStyle.SINGLE, size: 6, color: "9ca3af" };
@@ -2291,8 +2336,8 @@ function blocksFromEl(el, wrap = {}) {
       children: [...tr.querySelectorAll("th,td")].map(td => {
         const isHead = td.tagName === "TH" || (ri === 0 && tr.querySelectorAll("th").length > 0);
         return new docx.TableCell({
-          children: [new docx.Paragraph({ children: runsFromNode(td, { size: bsz(20), font: docFonts().headWord }), spacing: { line: 300, lineRule: docx.LineRuleType.AUTO } })],
-          ...(isHead ? { shading: { fill: "f1ede4" } } : {})
+          children: [new docx.Paragraph({ children: runsFromNode(td, { size: bsz(20), font: docFonts().headWord }), alignment: wordAlign(td), spacing: { line: 300, lineRule: docx.LineRuleType.AUTO } })],
+          ...(isHead ? { shading: { fill: "f4f4f1" } } : {})
         });
       })
     }));
@@ -2302,8 +2347,8 @@ function blocksFromEl(el, wrap = {}) {
     })] : [];
   }
   if (tag === "blockquote") {
-    // preview: amber left bar on a warm paper tint
-    const bq = { shading: { fill: "faf6ee" }, border: { left: { style: docx.BorderStyle.SINGLE, size: bsz(18), color: "b26a2b", space: 8 } } };
+    // preview: ink left bar on a neutral paper tint
+    const bq = { shading: { fill: "f4f4f1" }, border: { left: { style: docx.BorderStyle.SINGLE, size: bsz(18), color: "111827", space: 8 } } };
     const inner = [...el.children].filter(c => /^(p|h\d|pre|ul|ol|div)$/i.test(c.tagName));
     const kids = [];
     (inner.length ? inner : [el]).forEach(b => blocksFromEl(b, { ...bq, ...wrap }).forEach(x => kids.push(x)));
@@ -2316,6 +2361,7 @@ function blocksFromEl(el, wrap = {}) {
   }
   if (tag === "li") return [new docx.Paragraph({
     children: [new docx.TextRun({ text: "•  ", size: BS(), font: docFonts().bodyWord }), ...runsFromNode(el, { size: BS() })],
+    alignment: wordAlign(el),
     spacing: { after: 150, ...LINE }, ...wrap
   })];
 
@@ -2324,6 +2370,7 @@ function blocksFromEl(el, wrap = {}) {
   const para = (kids, spacing, over = {}) => new docx.Paragraph({
     children: kids.length ? kids : [new docx.TextRun({ text: "", size: BS(), font: docFonts().bodyWord })],
     spacing: { ...LINE, ...spacing },
+    alignment: wordAlign(el),
     tabStops,
     keepLines: q || undefined,
     ...wrap,
@@ -2500,7 +2547,7 @@ async function exportDoc() {
   }
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>
     @page{size:A4 ${pageOrient};margin:${marginInch()}in}
-    body{font-family:${f.bodyCss};font-size:${(12 * bScale()).toFixed(1)}pt}h1,h2{font-family:${f.headCss};text-align:center}h1{font-size:${(20 * hScale()).toFixed(1)}pt}h2{font-size:${(14 * hScale()).toFixed(1)}pt}table{border-collapse:collapse;width:100%}th,td{border:1.5pt solid #000;padding:6px}th{background:#EDE9FE}pre{background:#F1F5F9;padding:10px}.q-body{${cols}}</style></head><body>
+    body{font-family:${f.bodyCss};font-size:${(12 * bScale()).toFixed(1)}pt}h1,h2{font-family:${f.headCss};text-align:center}h1{font-size:${(20 * hScale()).toFixed(1)}pt}h2{font-size:${(14 * hScale()).toFixed(1)}pt}table{border-collapse:collapse;width:100%}th,td{border:1.5pt solid #000;padding:6px}th{background:#f4f4f1}pre{background:#111827;color:#f8fafc;padding:10px}.q-body{${cols};text-align:${alignKey}}</style></head><body>
     ${head}
     <div class="q-body">${$("#paperBody").innerHTML}</div>
     ${keyOn() ? '<div style="page-break-before:always"></div>' + $("#paperKey").innerHTML : ""}</body></html>`;
@@ -2555,9 +2602,9 @@ async function exportHtml() {
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>docxzal-paper</title>` +
     `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">` +
     `<style>@page{size:A4 ${pageOrient};margin:${marginInch()}in}` +
-    `body{font-family:${f.bodyCss};font-size:${(16 * bScale()).toFixed(1)}px;max-width:800px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7;${pageCols === 2 ? "column-count:2;column-gap:48px;" : ""}}` +
-    `h1,h2{font-family:${f.headCss}}` +
-    `h1{text-align:center;font-size:${(26 * hScale()).toFixed(1)}px}h2{font-size:${(16 * hScale()).toFixed(1)}px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #666;padding:6px}` +
+    `body{font-family:${f.bodyCss};font-size:${(16 * bScale()).toFixed(1)}px;max-width:800px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7;text-align:${alignKey};${pageCols === 2 ? "column-count:2;column-gap:48px;" : ""}}` +
+    `h1,h2{font-family:${f.headCss};text-align:center}` +
+    `h1{font-size:${(26 * hScale()).toFixed(1)}px}h2{font-size:${(16 * hScale()).toFixed(1)}px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #666;padding:6px}` +
     `pre{background:#22201c;color:#f0e9db;padding:12px;border-radius:8px;overflow:auto}` +
     `blockquote{border-left:3px solid #b26a2b;background:#faf6ee;padding:6px 12px;margin:10px 0}` +
     `@media print{body{max-width:none;margin:0;padding:0}}</style></head><body>` +
@@ -2578,6 +2625,7 @@ async function exportPptx() {
     const H = id => (((document.getElementById(id) || {}).textContent) || "").trim();
     const tx = (el) => ((el.innerText || el.textContent) || "").replace(/\s+/g, " ").trim();
     const f = docFonts(), BF = f.bodyWord, HF = f.headWord;
+    const PAlign = alignKey;
     const pptx = new PptxGenJS();
     pptx.defineLayout({ name: "WIDE", width: 13.33, height: 7.5 });
     pptx.layout = "WIDE";
@@ -2594,10 +2642,10 @@ async function exportPptx() {
       const tag = ch.tagName.toLowerCase(), t = tx(ch);
       if (/^h[12]$/.test(tag)) {
         slide = pptx.addSlide(); y = 0.4;
-        slide.addText(t, { x: 0.5, y, w: 12.33, h: 0.9, fontSize: tag === "h1" ? 28 : 24, bold: true, color: "1F2937", fontFace: HF });
+        slide.addText(t, { x: 0.5, y, w: 12.33, h: 0.9, fontSize: tag === "h1" ? 28 : 24, bold: true, color: "1F2937", fontFace: HF, align: PAlign });
         y += 1.1;
       }
-      else if (tag === "h3") { if (!t) return; need(0.7); slide.addText(t, { x: 0.6, y, w: 12.1, h: 0.6, fontSize: 18, bold: true, color: "1F2937", fontFace: HF }); y += 0.75; }
+      else if (tag === "h3") { if (!t) return; need(0.7); slide.addText(t, { x: 0.6, y, w: 12.1, h: 0.6, fontSize: 18, bold: true, color: "111827", fontFace: HF, align: PAlign }); y += 0.75; }
       else if (tag === "hr") { need(0.4); slide.addShape(pptx.shapes.LINE, { x: 0.6, y: y + 0.15, w: 12.1, h: 0, line: { color: "808080", width: 1.5 } }); y += 0.4; }
       else if (tag === "table") {
         const rows = [...ch.querySelectorAll("tr")]
@@ -2607,7 +2655,7 @@ async function exportPptx() {
         const h = rows.length * 0.38 + 0.1;
         need(h);
         slide.addTable(rows.map((r, ri) => r.map(c => ({
-          text: c, options: { fontSize: 12, color: "111111", fill: ri === 0 ? { color: "EDE9FE" } : undefined, bold: ri === 0, fontFace: HF }
+          text: c, options: { fontSize: 12, color: "111111", fill: ri === 0 ? { color: "F4F4F1" } : undefined, bold: ri === 0, fontFace: HF, align: PAlign }
         }))), { x: 0.6, y, w: 12.1, border: { pt: 1, color: "666666" } });
         y += h + 0.15;
       }
@@ -2618,13 +2666,13 @@ async function exportPptx() {
         slide.addText(t, { x: 0.6, y, w: 12.1, h, fontSize: 11, fontFace: "Consolas", fill: { color: "0F172A" }, color: "E2E8F0" });
         y += h + 0.15;
       }
-      else if (tag === "blockquote") { if (!t) return; need(0.8); slide.addText(t, { x: 0.9, y, w: 11.8, h: 0.7, fontSize: 14, italic: true, color: "4B5563", fontFace: BF }); y += 0.85; }
+      else if (tag === "blockquote") { if (!t) return; need(0.8); slide.addText(t, { x: 0.9, y, w: 11.8, h: 0.7, fontSize: 14, italic: true, color: "4B5563", fontFace: BF, align: PAlign }); y += 0.85; }
       else {
         if (!t) return;
         const prefix = tag === "li" ? "•  " : "";
         const h = Math.max(0.5, Math.ceil((prefix + t).length / 105) * 0.42);
         need(h);
-        slide.addText(prefix + t, { x: 0.6, y, w: 12.1, h, fontSize: 15, color: "111111", fontFace: BF });
+        slide.addText(prefix + t, { x: 0.6, y, w: 12.1, h, fontSize: 15, color: "111111", fontFace: BF, align: PAlign });
         y += h + 0.1;
       }
     });

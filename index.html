@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="forest-day">
+<html lang="en" data-theme="bone">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<meta name="theme-color" content="#edf3e8" />
+<meta name="theme-color" content="#f6f6f4" />
 <title>Docxzal — AI Paper to Word</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg?v=57" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg?v=64" />
 <link rel="stylesheet" href="fonts/poppins.css" />
 <link rel="stylesheet" href="vendor/katex/katex.min.css" />
-<link rel="stylesheet" href="styles.css?v=57" />
+<link rel="stylesheet" href="styles.css?v=64" />
 <script src="vendor/marked/marked.umd.js"></script>
 <script src="vendor/katex/katex.min.js"></script>
 <script src="vendor/katex/contrib/auto-render.min.js"></script>
@@ -18,7 +18,7 @@
 <script src="vendor/file-saver/FileSaver.min.js"></script>
 <script src="vendor/html2canvas/html2canvas.min.js"></script>
 <script src="vendor/jspdf/jspdf.umd.min.js"></script>
-<script src="native.js?v=57"></script>
+<script src="native.js?v=64"></script>
 </head>
 <body>
 
@@ -30,18 +30,12 @@
       <span class="intro-halo"></span>
       <div class="intro-mark">
         <svg viewBox="0 0 64 64" role="img" aria-label="Docxzal">
-          <defs>
-            <linearGradient id="introMarkGrad" x1="8" y1="6" x2="56" y2="60" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#e0a267"/>
-              <stop offset="1" stop-color="#a85f24"/>
-            </linearGradient>
-          </defs>
-          <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#introMarkGrad)"/>
-          <path class="intro-mark-line" pathLength="100" d="M23 12h13l9 9v24a5 5 0 0 1-5 5H23a5 5 0 0 1-5-5V17a5 5 0 0 1 5-5Z" fill="none" stroke="#fffdf7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <path class="intro-mark-fold" pathLength="100" d="M36 12v9h9" fill="none" stroke="#fffdf7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <path class="intro-mark-rule" d="M25 29h13M25 35h9" fill="none" stroke="#fffdf7" stroke-width="2.4" stroke-linecap="round" opacity="0"/>
-          <circle class="intro-check" cx="45" cy="45" r="10" fill="#7fb069"/>
-          <path class="intro-check-mark" pathLength="100" d="m40.8 45.1 2.7 2.8 5-5.6" fill="none" stroke="#fff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="2" y="2" width="60" height="60" rx="17" fill="#111827"/>
+          <path class="intro-mark-line" pathLength="100" d="M23 12h13l9 9v24a5 5 0 0 1-5 5H23a5 5 0 0 1-5-5V17a5 5 0 0 1 5-5Z" fill="none" stroke="#f8fafc" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="intro-mark-fold" pathLength="100" d="M36 12v9h9" fill="none" stroke="#f8fafc" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="intro-mark-rule" d="M25 29h13M25 35h9" fill="none" stroke="#f8fafc" stroke-width="2.4" stroke-linecap="round" opacity="0"/>
+          <circle class="intro-check" cx="45" cy="45" r="10" fill="#f8fafc"/>
+          <path class="intro-check-mark" pathLength="100" d="m40.8 45.1 2.7 2.8 5-5.6" fill="none" stroke="#111827" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
     </div>
@@ -57,28 +51,43 @@
   </p>
   <button class="intro-skip" type="button" tabindex="-1" aria-label="Skip intro">Skip</button>
 </div>
-<script src="intro.js?v=57"></script>
+<script src="intro.js?v=64"></script>
 
-<header class="topbar glass pop-in">
-  <div class="brand">
-    <img src="favicon.svg?v=57" alt="Docxzal" class="logo-img" />
-    <div><strong>Docxzal</strong><small>AI → Word papers</small></div>
-  </div>
-  <button id="themeToggle" class="icon-btn theme-toggle" aria-label="Switch theme" aria-pressed="false" title="Day / night">
-    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-  </button>
-  <div class="dd" id="ddTheme">
-    <button class="icon-btn theme-more" id="themeMoreBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Color themes" title="Color themes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".8" fill="currentColor"/><circle cx="13" cy="9" r=".8" fill="currentColor"/><circle cx="15.5" cy="12.5" r=".8" fill="currentColor"/><circle cx="10.5" cy="14.5" r=".8" fill="currentColor"/></svg></button>
-    <div class="palette-pop" id="themePalette" role="listbox" aria-label="Color theme" hidden></div>
-  </div>
-  <div class="top-actions">
-    <button id="btnAuthor" class="btn ghost" title="About the author">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
-      Author</button>
-    <button id="btnDocxTop" class="btn primary">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Word ↓</button>
+<header class="site-header" id="siteHeader">
+  <div class="header-dock">
+    <div class="brand">
+      <img src="favicon.svg?v=64" alt="Docxzal" class="logo-img" />
+      <div class="brand-copy"><strong>Docxzal</strong><small>by Bipin Rizal</small></div>
+    </div>
+
+    <nav class="nav-tabs" role="tablist" aria-label="Input mode">
+      <button class="tab active" data-tab="paste" role="tab" aria-selected="true" aria-controls="page-paste">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+        <span class="tab-label">Paste</span>
+      </button>
+      <button class="tab" data-tab="ai" role="tab" aria-selected="false" aria-controls="page-ai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8L19.7 10l-5.8 1.9L12 17.7l-1.9-5.8L4.3 10l5.8-1.9z"/></svg>
+        <span class="tab-label">Generate</span>
+      </button>
+      <button class="tab" data-tab="style" role="tab" aria-selected="false" aria-controls="page-style">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <span class="tab-label">Style</span>
+      </button>
+    </nav>
+
+    <div class="dock-actions">
+      <button id="themeToggle" class="icon-btn theme-toggle" aria-label="Switch theme" aria-pressed="false" title="Day / night">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <button id="btnAuthor" class="btn ghost sm" title="About the author">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
+        Author</button>
+      <button id="btnDocxTop" class="btn primary sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Word ↓</button>
+    </div>
+    <span class="dock-progress" id="dockProgress" aria-hidden="true"></span>
   </div>
 </header>
 
@@ -90,12 +99,6 @@
       <span class="step-chip"><b>3</b>Edit</span>
       <span class="step-chip"><b>4</b>Download</span>
     </div>
-    <div class="tabs" role="tablist" aria-label="Input mode">
-      <button class="tab active" data-tab="paste" role="tab" aria-selected="true"><span class="wv"></span><span class="tab-in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Paste</span></button>
-      <button class="tab" data-tab="ai" role="tab" aria-selected="false"><span class="wv"></span><span class="tab-in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8L19.7 10l-5.8 1.9L12 17.7l-1.9-5.8L4.3 10l5.8-1.9z"/></svg>Generate</span></button>
-      <button class="tab" data-tab="style" role="tab" aria-selected="false"><span class="wv"></span><span class="tab-in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Style</span></button>
-    </div>
-
     <div class="tabpage show" id="page-paste">
         <textarea id="rawInput" spellcheck="false" placeholder="Paste messy AI paper here…"></textarea>
         <div class="row">
@@ -211,6 +214,10 @@
           <button class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblBSize"><span class="dd-val">Normal</span><svg class="dd-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
           <div class="dd-menu" role="listbox" aria-labelledby="lblBSize" hidden></div>
         </div></div>
+        <div><label id="lblAlign">Text alignment</label><div class="dd" id="ddAlign">
+          <button class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblAlign"><span class="dd-val">Left</span><svg class="dd-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <div class="dd-menu" role="listbox" aria-labelledby="lblAlign" hidden></div>
+        </div></div>
         <div><label id="lblMargin">Page margins</label><div class="dd" id="ddMargin">
           <button class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblMargin"><span class="dd-val">Word default — 1" (2.54 cm)</span><svg class="dd-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
           <div class="dd-menu" role="listbox" aria-labelledby="lblMargin" hidden></div>
@@ -260,6 +267,10 @@
         <button class="tbtn fmtB" data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
         <button class="tbtn fmtI" data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
         <button class="tbtn fmtU" data-cmd="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+        <button class="tbtn" data-cmd="justifyLeft" title="Align left" aria-label="Align left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="20" y2="14"/><line x1="4" y1="18" x2="14" y2="18"/></svg></button>
+        <button class="tbtn" data-cmd="justifyCenter" title="Align center" aria-label="Align center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="10" x2="17" y2="10"/><line x1="4" y1="14" x2="20" y2="14"/><line x1="7" y1="18" x2="17" y2="18"/></svg></button>
+        <button class="tbtn" data-cmd="justifyRight" title="Align right" aria-label="Align right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="10" y1="10" x2="20" y2="10"/><line x1="4" y1="14" x2="20" y2="14"/><line x1="10" y1="18" x2="20" y2="18"/></svg></button>
+        <button class="tbtn" data-cmd="justifyFull" title="Justify" aria-label="Justify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="4" y1="14" x2="20" y2="14"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
         <button class="tbtn" data-cmd="insertHorizontalRule" title="Horizontal line" aria-label="Insert horizontal line">―</button>
         <button class="tbtn" data-cmd="removeFormat" title="Clear formatting" aria-label="Clear formatting">⌫</button>
       </div>
@@ -343,6 +354,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=57"></script>
+<script src="app.js?v=64"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 # Docxzal — AI Question Paper → Clean Word + PDF
 
-**Design:** warm minimalist caffeine theme — borderless tonal surfaces, Poppins, Lucide outline icons, gradient separators. Light/dark toggle uses a circular View-Transitions reveal; tabs use center-out underlines + hover wave; Photo-to-AI is an expandable section. There is no model picker: the model is chosen and swapped automatically from the key's live catalogue.
+**Design:** warm-neutral editorial minimalism — “Bone & Ink” light and “Midnight Slate” dark, no brand hue, Poppins, hairline borders and a floating frosted-glass dock with centered mode tabs, a shrink-on-scroll capsule and a reading-progress bar. The day/night toggle uses a circular View-Transitions reveal; Photo-to-AI is an expandable section. There is no model picker: the model is chosen and swapped automatically from the key's live catalogue.
 
-**Brand:** the warm paper + green check mark (small in the header) is shared by the web page, favicon, Android launcher and splash. A short logo intro plays once per tab; click the Docxzal logo to replay it (`?intro=1` also forces it).
+**Brand:** the monochrome paper + check mark (small in the header, inverted in dark mode) is shared by the web page, favicon, Android launcher and splash. A short logo intro plays once per tab; click the Docxzal logo to replay it (`?intro=1` also forces it).
 
 Paste messy output from Gemini / ChatGPT → clean **A4 preview** → **proper .docx with native editable Word equations** + **PDF**.
 
@@ -68,12 +68,18 @@ Every LaTeX construct becomes its proper Word form — verified against the `doc
 
 ## Edit in place (new)
 - The A4 paper itself is editable: click it and type, delete, paste (pasted text is auto-cleaned to plain text)
-- Format bar: **B** *I* <u>U</u>, ― horizontal line (exports as a real Word line), ⌫ clear formatting
+- Format bar: **B** *I* <u>U</u>, four alignment buttons, ― horizontal line (exports as a real Word line), ⌫ clear formatting
 - Marks show as plain right-margin text `[2 marks]` — no boxes. Formulas are locked while editing so they can't break
-- **Exports use your edited version**: `.docx` keeps bold/italic/underline, tables, code, lines, and native equations; `.doc`/PDF mirror the preview
+- **Exports use your edited version**: `.docx` keeps bold/italic/underline, alignment, tables, code, lines, and native equations; `.doc`/PDF mirror the preview
+
+## Text & layout
+- **Heading size** and **Body text size**: Small → Normal → Large → Extra large → **Huge** → **Max**
+- **Text alignment**: Left / Center / Right / Justify (document default) plus four alignment buttons for selected paragraphs
+- Word-default **1″ margins** and header off by default; the header can be switched back on in Paper setup
 
 ## Export
 - **.docx** — real `.docx` (editable equations), **PDF** button, and a **More** menu: Print, **.doc**, **PowerPoint .pptx** (title slide + question slides; math as readable Unicode — PPTX has no equation objects), **Markdown .md**, standalone **.html**
+- PDF keeps exact A4 sheets, splits long tables by rows with a repeated header, keeps inline code tokens intact, and balances the final page
 - Fullscreen preview button (⛶) + A−/A+ zoom for a proper full-window read
 
 ## Photo → AI (new)
