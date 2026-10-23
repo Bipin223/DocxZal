@@ -3,6 +3,9 @@
   "version": "1.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "description": "Docxzal — AI paper to Word, packaged for Android with Capacitor",
   "scripts": {
     "vendor": "node scripts/fetch-vendor.mjs",

@@ -33,7 +33,7 @@ Push to repo → Settings → Pages → `main` / root, or use `.github/workflows
 ## Android app (Capacitor)
 The phone app is a self-contained Capacitor build: all JS, CSS, fonts and libraries are bundled inside the APK, so preview and exports work offline. AI calls go **directly** to Gemini (there is no Python proxy on a phone), and exports open Android's native save/share sheet instead of a browser download.
 
-**Requirements:** Node 20+, Android SDK platform 36 + build-tools 35, and **JDK 21**. Newer JDKs (25/26) fail with `Unsupported class file major version 69`; Gradle 8.14.3 cannot run on them.
+**Requirements:** Node 22+, Android SDK platform 36 + build-tools 35, and **JDK 21**. Newer JDKs (25/26) fail with `Unsupported class file major version 69`; Gradle 8.14.3 cannot run on them.
 
 Build:
 ```powershell
@@ -55,7 +55,7 @@ Install on a connected phone: `adb install -r android\app\build\outputs\apk\debu
 - Runtime-tested: web preview/exports. Native-only behaviour (share sheet, camera permission, safe-area layout) still needs a check on a physical phone.
 
 ## Automatic Android builds
-`.github/workflows/android.yml` builds the APK on GitHub with Node 20 + JDK 21 + Android SDK 36.
+`.github/workflows/android.yml` builds the APK on GitHub with Node 22 + JDK 21 + Android SDK 36.
 
 - Every push to `main` (or manual **Run workflow**) builds `app-debug.apk`, uploads it as the `docxzal-debug-apk` Actions artifact, and refreshes the rolling public prerelease:  
   https://github.com/Bipin223/DocxZal/releases/tag/android-latest
