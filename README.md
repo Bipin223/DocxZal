@@ -54,6 +54,14 @@ Install on a connected phone: `adb install -r android\app\build\outputs\apk\debu
 - This is a debug APK (installable by sideloading). For Play Store distribution, create a signed release build in Android Studio.
 - Runtime-tested: web preview/exports. Native-only behaviour (share sheet, camera permission, safe-area layout) still needs a check on a physical phone.
 
+## Automatic Android builds
+`.github/workflows/android.yml` builds the APK on GitHub with Node 20 + JDK 21 + Android SDK 36.
+
+- Every push to `main` (or manual **Run workflow**) builds `app-debug.apk`, uploads it as the `docxzal-debug-apk` Actions artifact, and refreshes the rolling public prerelease:  
+  https://github.com/Bipin223/DocxZal/releases/tag/android-latest
+- Pushing a tag such as `v1.1.1-android` creates or updates a versioned release with the APK attached.
+- Workflow runs: https://github.com/Bipin223/DocxZal/actions/workflows/android.yml
+
 ## Conversion coverage (the essence)
 Every LaTeX construct becomes its proper Word form — verified against the `docx@8.5.0` OMML API, 13/13 engine checks green:
 - `\frac`, `\dfrac`, `\binom`, `\sqrt[n]{}` → stacked fractions, n-th roots
