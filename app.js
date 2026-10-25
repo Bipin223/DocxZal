@@ -18,6 +18,40 @@ const NULL_EL = new Proxy(function () {}, {
 const toast = (m) => { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); };
 const CHECK_SVG = '<svg class="dd-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
 
+/* ---------- document name → every download filename ---------- */
+let docNameStored = "docxzal-paper";
+try { docNameStored = localStorage.getItem("bd_filename") || "docxzal-paper"; } catch {}
+function docBaseName() {
+  const inp = $("#sFileName");
+  let s = String((inp && inp.value) || "").trim();
+  s = s.replace(/\.(pdf|docx?|pptx?|md|html?)$/i, "").trim();
+  s = s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+       .replace(/\s+/g, " ")
+       .replace(/-{2,}/g, "-")
+       .replace(/^[.\s-]+|[.\s-]+$/g, "");
+  if (!s) s = "docxzal-paper";
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(s)) s += "-paper";
+  return s.slice(0, 120).replace(/[.\s]+$/g, "") || "docxzal-paper";
+}
+function paintFileName() {
+  const base = docBaseName();
+  const hint = $("#fileNameHint");
+  if (hint) hint.textContent = `Downloads as ${base}.*`;
+  const inp = $("#sFileName");
+  if (inp) inp.title = `Downloads as ${base}.*`;
+}
+(function initDocName() {
+  const inp = $("#sFileName");
+  if (!inp) return;
+  inp.value = docNameStored || "docxzal-paper";
+  inp.addEventListener("input", () => {
+    docNameStored = inp.value;
+    try { localStorage.setItem("bd_filename", docNameStored); } catch {}
+    paintFileName();
+  });
+  paintFileName();
+})();
+
 /* ---------- Theme: Bone & Ink / Midnight Slate ---------- */
 const THEMES = [{ value: "bone", label: "Bone & Ink" }, { value: "midnight", label: "Midnight Slate" }];
 function currentTheme() {
@@ -1244,8 +1278,9 @@ $("#btnPdf").onclick = async () => {
         0, 0, built.dims.wmm, built.dims.hmm, undefined, "FAST");
       canvas.width = canvas.height = 0; // release the page bitmap before the next one
     }
-    await downloadBlob(pdf.output("blob"), "docxzal-paper.pdf");
-    toast(`Downloaded docxzal-paper.pdf · ${built.pages.length} page${built.pages.length === 1 ? "" : "s"}`);
+    const name = docBaseName();
+    await downloadBlob(pdf.output("blob"), `${name}.pdf`);
+    toast(`Downloaded ${name}.pdf · ${built.pages.length} page${built.pages.length === 1 ? "" : "s"}`);
   } catch (e) {
     console.error(e);
     toast("PDF failed — use More → Print instead");
@@ -1268,7 +1303,7 @@ document.addEventListener("click", (e) => { if (!exportMenu.hidden && !ddExport.
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !exportMenu.hidden) { closeExportMenu(); btnMore.focus(); } });
 exportMenu.querySelectorAll(".menu-item").forEach(b => b.addEventListener("click", () => {
   closeExportMenu();
-  ({ print: () => { const t0 = document.title; document.title = "docxzal-paper"; window.print(); setTimeout(() => { document.title = t0; }, 600); },
+  ({ print: () => { const t0 = document.title; document.title = docBaseName(); window.print(); setTimeout(() => { document.title = t0; }, 600); },
      doc: exportDoc, pptx: exportPptx, md: exportMd, html: exportHtml })[b.dataset.fmt]();
 }));
 
@@ -2517,8 +2552,9 @@ async function exportDocx() {
     const doc = new docx.Document({ sections });
     let blob = await docx.Packer.toBlob(doc);
     if (orient === "landscape") blob = await patchLandscape(blob);
-    await downloadBlob(blob, "docxzal-paper.docx");
-    toast("Downloaded docxzal-paper.docx");
+    const name = docBaseName();
+    await downloadBlob(blob, `${name}.docx`);
+    toast(`Downloaded ${name}.docx`);
   } catch (e) { console.error(e); toast("Export failed — trying .doc"); exportDoc(); }
 }
 async function patchLandscape(blob) { // docx emits correct w/h but keeps orient="portrait"
@@ -2551,8 +2587,9 @@ async function exportDoc() {
     ${head}
     <div class="q-body">${$("#paperBody").innerHTML}</div>
     ${keyOn() ? '<div style="page-break-before:always"></div>' + $("#paperKey").innerHTML : ""}</body></html>`;
-  await downloadBlob(new Blob(["\ufeff", html], { type: "application/msword" }), "docxzal-paper.doc");
-  toast("Downloaded docxzal-paper.doc");
+  const name = docBaseName();
+  await downloadBlob(new Blob(["\ufeff", html], { type: "application/msword" }), `${name}.doc`);
+  toast(`Downloaded ${name}.doc`);
 }
 /* ---------- Focus mode: hide sidebar, full paper ---------- */
 (function initFocus() {
@@ -2585,8 +2622,9 @@ document.addEventListener("fullscreenchange", () => {
 async function exportMd() {
   const src = $("#rawInput").value.trim() || $("#paperBody").innerText.trim();
   if (!src) { toast("Nothing to export yet"); return; }
-  await downloadBlob(new Blob([src], { type: "text/markdown" }), "docxzal-paper.md");
-  toast("Downloaded docxzal-paper.md");
+  const name = docBaseName();
+  await downloadBlob(new Blob([src], { type: "text/markdown" }), `${name}.md`);
+  toast(`Downloaded ${name}.md`);
 }
 async function exportHtml() {
   const body = $("#paperBody");
@@ -2599,20 +2637,21 @@ async function exportHtml() {
       ($("#cMeta").checked ? `<p style="text-align:center">${H("pMeta")}</p>` : "") + `<hr>` +
       ($("#cInstrBox").checked && H("pInstr") ? `<p style="white-space:pre-wrap">${H("pInstr")}</p>` : "");
   }
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>docxzal-paper</title>` +
+  const name = docBaseName();
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${name.replace(/&/g, "&amp;")}</title>` +
     `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">` +
     `<style>@page{size:A4 ${pageOrient};margin:${marginInch()}in}` +
     `body{font-family:${f.bodyCss};font-size:${(16 * bScale()).toFixed(1)}px;max-width:800px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7;text-align:${alignKey};${pageCols === 2 ? "column-count:2;column-gap:48px;" : ""}}` +
     `h1,h2{font-family:${f.headCss};text-align:center}` +
     `h1{font-size:${(26 * hScale()).toFixed(1)}px}h2{font-size:${(16 * hScale()).toFixed(1)}px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #666;padding:6px}` +
-    `pre{background:#22201c;color:#f0e9db;padding:12px;border-radius:8px;overflow:auto}` +
-    `blockquote{border-left:3px solid #b26a2b;background:#faf6ee;padding:6px 12px;margin:10px 0}` +
+    `pre{background:#111827;color:#f8fafc;padding:12px;border-radius:8px;overflow:auto}` +
+    `blockquote{border-left:3px solid #111827;background:#f4f4f1;padding:6px 12px;margin:10px 0}` +
     `@media print{body{max-width:none;margin:0;padding:0}}</style></head><body>` +
     `${head}${body.innerHTML}` +
     (keyOn() ? `<hr style="page-break-before:always;border:0">${$("#paperKey").innerHTML}` : "") +
     `</body></html>`;
-  await downloadBlob(new Blob([html], { type: "text/html" }), "docxzal-paper.html");
-  toast("Downloaded docxzal-paper.html");
+  await downloadBlob(new Blob([html], { type: "text/html" }), `${name}.html`);
+  toast(`Downloaded ${name}.html`);
 }
 
 /* ---------- PowerPoint export (slides; math as readable Unicode) ---------- */
@@ -2677,8 +2716,9 @@ async function exportPptx() {
       }
     });
     const blob = await pptx.write({ outputType: "blob" });
-    await downloadBlob(blob, "docxzal-paper.pptx");
-    toast("Downloaded docxzal-paper.pptx");
+    const name = docBaseName();
+    await downloadBlob(blob, `${name}.pptx`);
+    toast(`Downloaded ${name}.pptx`);
   } catch (e) { console.error(e); toast("PPTX failed"); }
 }
 

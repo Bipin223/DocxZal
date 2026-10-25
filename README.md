@@ -81,6 +81,7 @@ Every LaTeX construct becomes its proper Word form — verified against the `doc
 - **Exports use your edited version**: `.docx` keeps bold/italic/underline, alignment, tables, code, lines, and native equations; `.doc`/PDF mirror the preview
 
 ## Text & layout
+- **Document name** (toolbar): rename the file once; PDF, DOCX, DOC, PPTX, Markdown and HTML downloads all use that name
 - **Heading size** and **Body text size**: Small → Normal → Large → Extra large → **Huge** → **Max**
 - **Text alignment**: Left / Center / Right / Justify (document default) plus four alignment buttons for selected paragraphs
 - Word-default **1″ margins** and header off by default; the header can be switched back on in Paper setup
